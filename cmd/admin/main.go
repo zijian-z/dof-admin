@@ -29,8 +29,9 @@ type server struct {
 	gameConfigured   bool
 	gameConnectError error
 
-	pvfPath string
-	items   itemCache
+	pvfPath    string
+	pvfCharset string
+	items      itemCache
 
 	npkRoot string
 	npkMu   sync.Mutex
@@ -121,6 +122,7 @@ type itemsState struct {
 	Configured     bool   `json:"configured"`
 	Loaded         bool   `json:"loaded"`
 	PvfPath        string `json:"pvfPath,omitempty"`
+	PvfCharset     string `json:"pvfCharset,omitempty"`
 	EquipmentCount int    `json:"equipmentCount"`
 	StackableCount int    `json:"stackableCount"`
 	LoadedAt       string `json:"loadedAt,omitempty"`
@@ -179,8 +181,9 @@ func main() {
 	}
 
 	s := &server{
-		pvfPath: resolvePVFPath(),
-		npkRoot: strings.TrimSpace(os.Getenv("DNF_NPK_ROOT")),
+		pvfPath:    resolvePVFPath(),
+		pvfCharset: envDefault("DNF_PVF_CHARSET", "gb18030"),
+		npkRoot:    strings.TrimSpace(os.Getenv("DNF_NPK_ROOT")),
 	}
 	s.openGameDB()
 
@@ -191,6 +194,7 @@ func main() {
 	mux.HandleFunc("/api/mail", s.handleMail)
 	mux.HandleFunc("/api/reset-create-limit", s.handleResetCreateLimit)
 	mux.HandleFunc("/api/items/icon", s.handleItemIcon)
+	mux.HandleFunc("/api/items/reload", s.handleReloadItems)
 	mux.HandleFunc("/api/items", s.handleItems)
 	mux.HandleFunc("/api/items/", s.handleItemDetail)
 	mux.HandleFunc("/", s.handleStatic)
@@ -198,7 +202,7 @@ func main() {
 	addr := envDefault("DNF_ADMIN_ADDR", ":8080")
 	log.Printf("DNF admin UI listening on %s", addr)
 	log.Printf("build version=%s commit=%s buildTime=%s", version, commit, buildTime)
-	log.Printf("database configured=%t pvf=%q npkRoot=%q", s.gameConfigured, s.pvfPath, s.npkRoot)
+	log.Printf("database configured=%t pvf=%q pvfCharset=%q npkRoot=%q", s.gameConfigured, s.pvfPath, s.pvfCharset, s.npkRoot)
 	if err := http.ListenAndServe(addr, logRequest(mux)); err != nil {
 		log.Fatal(err)
 	}
@@ -217,7 +221,8 @@ func (s *server) openGameDB() {
 		if password == "" {
 			password = os.Getenv("DNF_DB_PASS")
 		}
-		dsn = dnfparser.BuildDSN(host, port, user, password)
+		charset := envDefault("DNF_DB_CHARSET", "utf8mb4")
+		dsn = dnfparser.BuildDSN(host, port, user, password, charset)
 	}
 
 	s.gameConfigured = true
@@ -233,6 +238,9 @@ func (s *server) openGameDB() {
 func resolvePVFPath() string {
 	if p := strings.TrimSpace(os.Getenv("DNF_PVF")); p != "" {
 		return p
+	}
+	if _, err := os.Stat("Script.pvf"); err == nil {
+		return "Script.pvf"
 	}
 	if _, err := os.Stat("extracted/Script.pvf"); err == nil {
 		return "extracted/Script.pvf"
@@ -251,6 +259,7 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		Configured:     s.pvfPath != "",
 		Loaded:         s.items.loaded,
 		PvfPath:        s.pvfPath,
+		PvfCharset:     s.pvfCharset,
 		EquipmentCount: len(s.items.equipment),
 		StackableCount: len(s.items.stackables),
 	}
@@ -541,6 +550,40 @@ func (s *server) handleItems(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *server) handleReloadItems(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if strings.TrimSpace(s.pvfPath) == "" {
+		writeError(w, http.StatusServiceUnavailable, "PVF is not configured; set DNF_PVF or place Script.pvf under the working directory")
+		return
+	}
+
+	equipment, stackables, facets, loadedAt, err := loadItems(s.pvfPath, s.pvfCharset)
+	s.items.mu.Lock()
+	s.items.once = sync.Once{}
+	s.items.err = err
+	if err == nil {
+		s.items.loaded = true
+		s.items.loadedAt = loadedAt
+		s.items.equipment = equipment
+		s.items.stackables = stackables
+		s.items.facets = facets
+	}
+	s.items.mu.Unlock()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"equipmentCount": len(equipment),
+		"stackableCount": len(stackables),
+		"loadedAt":       loadedAt.Format(time.RFC3339),
+	})
+}
+
 func (s *server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -657,11 +700,11 @@ func (s *server) requireGame(w http.ResponseWriter) (*dnfparser.GameDB, bool) {
 
 func (s *server) ensureItems() error {
 	if strings.TrimSpace(s.pvfPath) == "" {
-		return errors.New("PVF is not configured; set DNF_PVF or place extracted/Script.pvf under the working directory")
+		return errors.New("PVF is not configured; set DNF_PVF or place Script.pvf under the working directory")
 	}
 
 	s.items.once.Do(func() {
-		equipment, stackables, facets, loadedAt, err := loadItems(s.pvfPath)
+		equipment, stackables, facets, loadedAt, err := loadItems(s.pvfPath, s.pvfCharset)
 		s.items.mu.Lock()
 		defer s.items.mu.Unlock()
 		s.items.err = err
@@ -679,14 +722,14 @@ func (s *server) ensureItems() error {
 	return s.items.err
 }
 
-func loadItems(pvfPath string) (equipment []*dnfparser.Equipment, stackables []*dnfparser.Stackable, facets itemFacets, loadedAt time.Time, err error) {
+func loadItems(pvfPath string, pvfCharset string) (equipment []*dnfparser.Equipment, stackables []*dnfparser.Stackable, facets itemFacets, loadedAt time.Time, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("load PVF items failed: %v", recovered)
 		}
 	}()
 
-	pvf, err := dnfparser.OpenPvf(pvfPath)
+	pvf, err := dnfparser.OpenPvfWithCharset(pvfPath, pvfCharset)
 	if err != nil {
 		return nil, nil, itemFacets{}, time.Time{}, err
 	}

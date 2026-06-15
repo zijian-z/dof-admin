@@ -6,7 +6,7 @@
 //   - NPK：索引表解析、文件名固定 key 异或解密、V1/V2 贴图解码、ARGB(8888/1555/4444)
 //     颜色还原、zlib 解压，以及导出 PNG 字节流。
 //
-// 唯一的第三方依赖：golang.org/x/text（用于 Big5 解码，PVF 文本编码）。
+// 唯一的第三方依赖：golang.org/x/text（用于 PVF / DB 文本编码转换）。
 // 其余全部使用 Go 标准库（compress/zlib、image/png、encoding/binary 等）。
 //
 // 使用示例见文件末尾 Example* 函数。
@@ -28,7 +28,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
+	textencoding "golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 	"golang.org/x/text/transform"
 )
@@ -169,18 +172,46 @@ func crcDecrypt(data []byte, crc32 int32) {
 }
 
 // =============================================================================
-// Big5 解码（PVF 文本编码）
+// 文本解码（PVF / DB 文本编码）
 // =============================================================================
 
-var big5Decoder = traditionalchinese.Big5.NewDecoder()
-
-func decodeBig5(b []byte) string {
-	out, _, err := transform.Bytes(big5Decoder.Transformer, b)
+func DecodeBytes(b []byte, charset string) string {
+	if len(b) == 0 {
+		return ""
+	}
+	normalized := normalizeCharset(charset)
+	if normalized == "" || normalized == "utf8" || normalized == "utf-8" {
+		if utf8.Valid(b) {
+			return string(b)
+		}
+		return string(b)
+	}
+	enc, ok := textEncoding(normalized)
+	if !ok {
+		return string(b)
+	}
+	out, _, err := transform.Bytes(enc.NewDecoder(), b)
 	if err != nil {
-		// 解码失败时退回原始字节（与 Java new String 容错行为近似）
 		return string(b)
 	}
 	return string(out)
+}
+
+func normalizeCharset(charset string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(charset), "_", "-"), " ", ""))
+}
+
+func textEncoding(charset string) (textencoding.Encoding, bool) {
+	switch normalizeCharset(charset) {
+	case "big5", "big-5":
+		return traditionalchinese.Big5, true
+	case "gbk", "cp936":
+		return simplifiedchinese.GBK, true
+	case "gb18030", "gb-18030":
+		return simplifiedchinese.GB18030, true
+	default:
+		return nil, false
+	}
 }
 
 // =============================================================================
@@ -216,11 +247,16 @@ type Pvf struct {
 	treeDict    map[string][]*PvfFile // key 为目录前缀（小写），大小写不敏感匹配
 	stringTable map[int32]string
 	nString     map[string]map[string]string // 文件名 -> (key -> value)
+	charset     string
 }
 
 // OpenPvf 打开并初始化一个 PVF 文件（对应 Java new Pvf(path, charset) + PvfCoder.initialize）。
-// charset 固定按 Big5 处理（与台服一致），此处保留参数仅为语义清晰。
 func OpenPvf(path string) (*Pvf, error) {
+	return OpenPvfWithCharset(path, "big5")
+}
+
+// OpenPvfWithCharset 打开并初始化一个 PVF 文件，charset 支持 big5 / gbk / gb18030 / utf-8。
+func OpenPvfWithCharset(path string, charset string) (*Pvf, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -228,6 +264,7 @@ func OpenPvf(path string) (*Pvf, error) {
 	p := &Pvf{
 		data:     raw,
 		treeDict: make(map[string][]*PvfFile),
+		charset:  charset,
 	}
 	if err := p.loadHeader(); err != nil {
 		return nil, err
@@ -240,6 +277,10 @@ func OpenPvf(path string) (*Pvf, error) {
 		return nil, err
 	}
 	return p, nil
+}
+
+func (p *Pvf) decodeText(b []byte) string {
+	return DecodeBytes(b, p.charset)
 }
 
 func (p *Pvf) loadHeader() error {
@@ -469,7 +510,7 @@ func (p *Pvf) LoadScriptSource(path string) string {
 	}
 	switch suffixOf(path) {
 	case "str":
-		return decodeBig5(content)
+		return p.decodeText(content)
 	case "ui":
 		return defaultParseSource(p, path, content, true)
 	case "bin", "lst", "ani":
@@ -481,7 +522,7 @@ func (p *Pvf) LoadScriptSource(path string) string {
 }
 
 // =============================================================================
-// bin 解析器（对应 BinParser）：偏移表 + Big5 文本切分
+// bin 解析器（对应 BinParser）：偏移表 + PVF 文本编码切分
 // =============================================================================
 
 func binParse(p *Pvf, data []byte) map[string]interface{} {
@@ -493,7 +534,7 @@ func binParse(p *Pvf, data []byte) map[string]interface{} {
 	for i := int32(0); i < tableSize; i++ {
 		end := r.readInt()
 		ctx := data[start+4 : end+4]
-		dict[fmt.Sprintf("%d", i)] = decodeBig5(ctx)
+		dict[fmt.Sprintf("%d", i)] = p.decodeText(ctx)
 		start = end
 	}
 	return dict
@@ -537,7 +578,7 @@ func lstToIface(m map[string]string) map[string]interface{} {
 // =============================================================================
 
 func strParse(p *Pvf, data []byte) map[string]string {
-	content := decodeBig5(data)
+	content := p.decodeText(data)
 	dict := make(map[string]string)
 	for _, line := range strings.Split(content, "\r\n") {
 		if strings.HasPrefix(line, "//") || strings.TrimSpace(line) == "" {
@@ -1251,7 +1292,7 @@ func loopNpkFiles(root string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
+		if !info.IsDir() && strings.EqualFold(filepath.Ext(path), ".npk") {
 			files = append(files, path)
 		}
 		return nil

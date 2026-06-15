@@ -206,7 +206,7 @@ function bindItems() {
     updateItemFilterAvailability();
     loadItems();
   });
-  $("#refresh-items").addEventListener("click", loadItems);
+  $("#refresh-items").addEventListener("click", reloadItems);
   $("#item-type").addEventListener("change", updateItemFilterAvailability);
   $("#items-prev").addEventListener("click", () => {
     if (state.items.page > 1) {
@@ -305,6 +305,7 @@ function renderHealthDetails(health) {
     ]),
     healthPanel("PVF 物品", health.items.loaded, [
       ["路径", health.items.pvfPath || "未配置"],
+      ["编码", health.items.pvfCharset || ""],
       ["装备数量", health.items.equipmentCount],
       ["道具数量", health.items.stackableCount],
       ["加载时间", health.items.loadedAt ? formatDate(health.items.loadedAt) : ""],
@@ -541,6 +542,20 @@ async function loadItems() {
     populateItemFacets(data.facets);
     renderItems();
     refreshHealth();
+  } catch (error) {
+    body.innerHTML = `<tr><td colspan="8" class="empty">${escapeHTML(error.message)}</td></tr>`;
+    showToast(error.message, "err");
+  }
+}
+
+async function reloadItems() {
+  const body = $("#items-body");
+  body.innerHTML = `<tr><td colspan="8" class="empty">正在重新解析 PVF</td></tr>`;
+  try {
+    await api("/api/items/reload", { method: "POST", body: "{}" });
+    state.items.page = 1;
+    await loadItems();
+    showToast("物品缓存已刷新", "ok");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="8" class="empty">${escapeHTML(error.message)}</td></tr>`;
     showToast(error.message, "err");

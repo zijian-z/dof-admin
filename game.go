@@ -45,9 +45,13 @@ func OpenGameDB(dsn string) (*GameDB, error) {
 }
 
 // BuildDSN 按主机/端口/账号/密码拼一个常用 DSN。
-func BuildDSN(host string, port int, user, password string) string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4&parseTime=true&loc=Local",
-		user, password, host, port)
+func BuildDSN(host string, port int, user, password, charset string) string {
+	charset = strings.TrimSpace(charset)
+	if charset == "" {
+		charset = "utf8mb4"
+	}
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=%s&parseTime=true&loc=Local",
+		user, password, host, port, charset)
 }
 
 // Close 关闭连接。
