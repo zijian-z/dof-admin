@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DNF Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">DNF</div>
+        <div>
+          <div class="brand-title">DNF Admin</div>
+          <div class="brand-subtitle">游戏管理台</div>
+        </div>
+      </div>
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-btn active" data-view="characters">角色管理</button>
+        <button class="nav-btn" data-view="mail">邮件发货</button>
+        <button class="nav-btn" data-view="items">物品库</button>
+        <button class="nav-btn" data-view="system">系统状态</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="view-title">角色管理</h1>
+          <p id="view-subtitle">查询角色、编辑常用属性，并快速跳转发货。</p>
+        </div>
+        <div class="status-strip" id="status-strip" aria-live="polite">
+          <span class="status-pill muted">状态加载中</span>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="view active" id="view-characters">
+          <div class="section-head">
+            <div>
+              <h2>角色列表</h2>
+              <p>支持按角色名、账号 UID、职业和等级范围筛选。</p>
+            </div>
+            <button class="btn secondary" id="refresh-characters">刷新</button>
+          </div>
+
+          <form class="toolbar" id="character-filter">
+            <label class="field">
+              <span>角色名</span>
+              <input name="name" type="search" placeholder="输入角色名">
+            </label>
+            <label class="field">
+              <span>账号 UID</span>
+              <input name="mid" type="number" inputmode="numeric" placeholder="m_id">
+            </label>
+            <label class="field">
+              <span>职业</span>
+              <input name="job" type="number" inputmode="numeric" placeholder="job">
+            </label>
+            <label class="field">
+              <span>最低等级</span>
+              <input name="levMin" type="number" inputmode="numeric" min="1" placeholder="1">
+            </label>
+            <label class="field">
+              <span>最高等级</span>
+              <input name="levMax" type="number" inputmode="numeric" min="1" placeholder="999">
+            </label>
+            <label class="field">
+              <span>每页</span>
+              <select name="pageSize">
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <div class="toolbar-actions">
+              <button class="btn primary" type="submit">查询</button>
+              <button class="btn ghost" type="button" id="reset-character-filter">重置</button>
+            </div>
+          </form>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>角色</th>
+                  <th>账号 UID</th>
+                  <th>职业</th>
+                  <th>等级</th>
+                  <th>HP / MP</th>
+                  <th>三速</th>
+                  <th>疲劳</th>
+                  <th>创建时间</th>
+                  <th class="actions-col">操作</th>
+                </tr>
+              </thead>
+              <tbody id="characters-body">
+                <tr><td colspan="9" class="empty">等待查询</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pager">
+            <button class="btn secondary" id="characters-prev">上一页</button>
+            <span id="characters-page">第 1 页</span>
+            <button class="btn secondary" id="characters-next">下一页</button>
+          </div>
+        </section>
+
+        <section class="view" id="view-mail">
+          <div class="section-head">
+            <div>
+              <h2>邮件发货</h2>
+              <p>发送物品、金币或信件，并查看最近邮件记录。</p>
+            </div>
+            <button class="btn danger" id="reset-create-limit">重置创建限制</button>
+          </div>
+
+          <div class="split-grid">
+            <section class="panel">
+              <h3>发送邮件</h3>
+              <form id="mail-form" class="form-grid">
+                <label class="field span-2">
+                  <span>收件角色 ID</span>
+                  <input name="receiveCharacNo" type="text" required placeholder="charac_no">
+                </label>
+                <label class="field span-2">
+                  <span>发件人</span>
+                  <input name="sendCharacName" type="text" placeholder="DNF Manager">
+                </label>
+                <label class="field">
+                  <span>物品 ID</span>
+                  <input name="itemId" type="number" inputmode="numeric" min="0" placeholder="item_id">
+                </label>
+                <label class="field">
+                  <span>数量</span>
+                  <input name="count" type="number" inputmode="numeric" min="1" value="1">
+                </label>
+                <label class="field">
+                  <span>强化</span>
+                  <input name="upgrade" type="number" inputmode="numeric" value="0">
+                </label>
+                <label class="field">
+                  <span>锻造</span>
+                  <input name="seperateUpgrade" type="number" inputmode="numeric" value="0">
+                </label>
+                <label class="field">
+                  <span>红字类型</span>
+                  <input name="amplifyOption" type="number" inputmode="numeric" value="0">
+                </label>
+                <label class="field">
+                  <span>红字数值</span>
+                  <input name="amplifyValue" type="number" inputmode="numeric" value="0">
+                </label>
+                <label class="field">
+                  <span>金币</span>
+                  <input name="gold" type="number" inputmode="numeric" min="0" value="0">
+                </label>
+                <label class="field">
+                  <span>信件 ID</span>
+                  <input name="letterId" type="number" inputmode="numeric" min="0" value="0">
+                </label>
+                <label class="check-field span-2">
+                  <input name="seal" type="checkbox">
+                  <span>封装物品</span>
+                </label>
+                <div class="form-actions span-2">
+                  <button class="btn primary" type="submit">发送</button>
+                  <button class="btn ghost" type="button" id="clear-mail-form">清空</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <h3>邮件记录</h3>
+              <form class="toolbar compact" id="mail-filter">
+                <label class="field">
+                  <span>收件角色 ID</span>
+                  <input name="receiveCharacNo" type="search" placeholder="不过滤">
+                </label>
+                <label class="field">
+                  <span>开始时间</span>
+                  <input name="start" type="datetime-local">
+                </label>
+                <label class="field">
+                  <span>结束时间</span>
+                  <input name="end" type="datetime-local">
+                </label>
+                <label class="field">
+                  <span>每页</span>
+                  <select name="pageSize">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+                <div class="toolbar-actions">
+                  <button class="btn primary" type="submit">查询</button>
+                </div>
+              </form>
+              <div class="table-wrap compact-table">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>时间</th>
+                      <th>发件人</th>
+                      <th>收件人</th>
+                      <th>物品</th>
+                      <th>数量</th>
+                      <th>金币</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mail-body">
+                    <tr><td colspan="7" class="empty">等待查询</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pager">
+                <button class="btn secondary" id="mail-prev">上一页</button>
+                <span id="mail-page">第 1 页</span>
+                <button class="btn secondary" id="mail-next">下一页</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-items">
+          <div class="section-head">
+            <div>
+              <h2>物品库</h2>
+              <p>搜索 PVF 解析出的装备和道具，支持从结果直接填入发货表单。</p>
+            </div>
+            <button class="btn secondary" id="refresh-items">刷新</button>
+          </div>
+
+          <form class="toolbar" id="item-filter">
+            <label class="field span-2">
+              <span>关键词 / ID</span>
+              <input name="q" type="search" placeholder="名称或物品 ID">
+            </label>
+            <label class="field">
+              <span>类型</span>
+              <select name="type" id="item-type">
+                <option value="all">全部</option>
+                <option value="equipment">装备</option>
+                <option value="stackable">道具</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>稀有度</span>
+              <select name="rarity" id="rarity-select">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>最低等级</span>
+              <input name="minLevel" type="number" inputmode="numeric" min="0" placeholder="不限">
+            </label>
+            <label class="field">
+              <span>最高等级</span>
+              <input name="maxLevel" type="number" inputmode="numeric" min="0" placeholder="不限">
+            </label>
+            <label class="field">
+              <span>装备类型</span>
+              <select name="equipmentType" id="equipment-type-select">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>装备子类</span>
+              <select name="itemGroup" id="item-group-select">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>道具类型</span>
+              <select name="stackableType" id="stackable-type-select">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>时装</span>
+              <select name="avatar">
+                <option value="">不限</option>
+                <option value="true">仅时装</option>
+                <option value="false">非时装</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>每页</span>
+              <select name="pageSize">
+                <option value="40">40</option>
+                <option value="80">80</option>
+                <option value="120">120</option>
+              </select>
+            </label>
+            <div class="toolbar-actions">
+              <button class="btn primary" type="submit">搜索</button>
+              <button class="btn ghost" type="button" id="reset-item-filter">重置</button>
+            </div>
+          </form>
+
+          <div class="table-wrap">
+            <table class="data-table item-table">
+              <thead>
+                <tr>
+                  <th class="icon-col">图标</th>
+                  <th>物品</th>
+                  <th>分类</th>
+                  <th>稀有度</th>
+                  <th>等级</th>
+                  <th>携带</th>
+                  <th>交易</th>
+                  <th class="actions-col">操作</th>
+                </tr>
+              </thead>
+              <tbody id="items-body">
+                <tr><td colspan="8" class="empty">等待搜索</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pager">
+            <button class="btn secondary" id="items-prev">上一页</button>
+            <span id="items-page">第 1 页</span>
+            <button class="btn secondary" id="items-next">下一页</button>
+          </div>
+        </section>
+
+        <section class="view" id="view-system">
+          <div class="section-head">
+            <div>
+              <h2>系统状态</h2>
+              <p>查看数据库、PVF 物品缓存和 NPK 图标资源的连接状态。</p>
+            </div>
+            <button class="btn secondary" id="refresh-health">刷新状态</button>
+          </div>
+
+          <div class="status-grid" id="health-details">
+            <div class="panel muted-panel">状态加载中</div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop hidden" id="drawer-backdrop"></div>
+
+  <aside class="drawer" id="character-drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <h2 id="character-drawer-title">编辑角色</h2>
+        <p id="character-drawer-subtitle"></p>
+      </div>
+      <button class="btn icon-btn" data-close-drawer type="button" aria-label="关闭">×</button>
+    </div>
+    <form id="character-form" class="form-grid">
+      <label class="field">
+        <span>攻击速度</span>
+        <input name="attackSpeed" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>施放速度</span>
+        <input name="castSpeed" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>移动速度</span>
+        <input name="moveSpeed" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>疲劳</span>
+        <input name="fatigue" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>最大 HP</span>
+        <input name="maxHp" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>最大 MP</span>
+        <input name="maxMp" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>物理攻击</span>
+        <input name="phyAttack" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>物理防御</span>
+        <input name="phyDefense" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>魔法攻击</span>
+        <input name="magAttack" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>魔法防御</span>
+        <input name="magDefense" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>硬直</span>
+        <input name="hitRecovery" type="number" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span>跳跃</span>
+        <input name="jump" type="number" inputmode="numeric">
+      </label>
+      <div class="form-actions span-2">
+        <button class="btn primary" type="submit">保存</button>
+        <button class="btn ghost" type="button" data-close-drawer>取消</button>
+      </div>
+    </form>
+  </aside>
+
+  <aside class="drawer wide" id="item-drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <h2 id="item-drawer-title">物品详情</h2>
+        <p id="item-drawer-subtitle"></p>
+      </div>
+      <button class="btn icon-btn" data-close-drawer type="button" aria-label="关闭">×</button>
+    </div>
+    <div id="item-detail" class="item-detail"></div>
+  </aside>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
