@@ -1,0 +1,15 @@
+[Unit]
+Description=DNF Admin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dof-admin
+EnvironmentFile=/etc/dof-admin/dof-admin.env
+ExecStart=/opt/dof-admin/dof-admin
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

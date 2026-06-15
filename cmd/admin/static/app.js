@@ -314,6 +314,12 @@ function renderHealthDetails(health) {
       ["路径", health.npk.detail || "未配置"],
       ["状态", health.npk.ready ? "已加载" : "按需加载"],
       ["错误", health.npk.error || ""]
+    ]),
+    healthPanel("构建信息", true, [
+      ["版本", health.build?.version || "dev"],
+      ["Commit", health.build?.commit || "none"],
+      ["构建时间", health.build?.buildTime || "unknown"],
+      ["服务器时间", health.serverTime ? formatDate(health.serverTime) : ""]
     ])
   ].join("");
 }

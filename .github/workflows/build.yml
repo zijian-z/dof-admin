@@ -1,0 +1,143 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            goos: linux
+            goarch: amd64
+            archive: tar.gz
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+            archive: tar.gz
+          - target: darwin-amd64
+            goos: darwin
+            goarch: amd64
+            archive: tar.gz
+          - target: darwin-arm64
+            goos: darwin
+            goarch: arm64
+            archive: tar.gz
+          - target: windows-amd64
+            goos: windows
+            goarch: amd64
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist package/dof-admin
+
+          binary="dof-admin"
+          if [ "$GOOS" = "windows" ]; then
+            binary="dof-admin.exe"
+          fi
+
+          build_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          version="${GITHUB_REF_NAME:-dev}"
+
+          go build \
+            -trimpath \
+            -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA} -X main.buildTime=${build_time}" \
+            -o "package/dof-admin/${binary}" \
+            ./cmd/admin
+
+          cp -R deploy package/dof-admin/deploy
+
+      - name: Package artifact
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          archive="dof-admin-${{ matrix.target }}.${{ matrix.archive }}"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            (cd package/dof-admin && zip -r "../../dist/${archive}" .)
+          else
+            (cd package/dof-admin && tar -czf "../../dist/${archive}" .)
+          fi
+          (cd dist && sha256sum "${archive}" > "${archive}.sha256")
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dof-admin-${{ matrix.target }}
+          path: |
+            dist/dof-admin-${{ matrix.target }}.${{ matrix.archive }}
+            dist/dof-admin-${{ matrix.target }}.${{ matrix.archive }}.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dof-admin-*
+          merge-multiple: true
+          path: release-artifacts
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" release-artifacts/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" release-artifacts/* --title "${GITHUB_REF_NAME}" --generate-notes
+          fi

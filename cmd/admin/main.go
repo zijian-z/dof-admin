@@ -36,6 +36,12 @@ type server struct {
 	npkErr  error
 }
 
+var (
+	version   = "dev"
+	commit    = "none"
+	buildTime = "unknown"
+)
+
 type itemCache struct {
 	once       sync.Once
 	mu         sync.RWMutex
@@ -123,7 +129,14 @@ type healthResponse struct {
 	Database   serviceState `json:"database"`
 	Items      itemsState   `json:"items"`
 	Npk        serviceState `json:"npk"`
+	Build      buildState   `json:"build"`
 	ServerTime string       `json:"serverTime"`
+}
+
+type buildState struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuildTime string `json:"buildTime"`
 }
 
 type mailPayload struct {
@@ -178,6 +191,7 @@ func main() {
 
 	addr := envDefault("DNF_ADMIN_ADDR", ":8080")
 	log.Printf("DNF admin UI listening on %s", addr)
+	log.Printf("build version=%s commit=%s buildTime=%s", version, commit, buildTime)
 	log.Printf("database configured=%t pvf=%q npkRoot=%q", s.gameConfigured, s.pvfPath, s.npkRoot)
 	if err := http.ListenAndServe(addr, logRequest(mux)); err != nil {
 		log.Fatal(err)
@@ -261,6 +275,7 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		Database:   db,
 		Items:      items,
 		Npk:        npk,
+		Build:      buildState{Version: version, Commit: commit, BuildTime: buildTime},
 		ServerTime: time.Now().Format(time.RFC3339),
 	})
 }
