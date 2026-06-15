@@ -117,10 +117,10 @@
             <button class="btn danger" id="reset-create-limit">重置创建限制</button>
           </div>
 
-          <div class="split-grid">
-            <section class="panel">
+          <div class="mail-layout">
+            <section class="panel mail-compose-panel">
               <h3>发送邮件</h3>
-              <form id="mail-form" class="form-grid">
+              <form id="mail-form" class="form-grid mail-compose-form">
                 <label class="field span-2">
                   <span>收件角色 ID</span>
                   <input name="receiveCharacNo" type="text" required placeholder="charac_no">
@@ -172,9 +172,9 @@
               </form>
             </section>
 
-            <section class="panel">
+            <section class="panel mail-record-panel">
               <h3>邮件记录</h3>
-              <form class="toolbar compact" id="mail-filter">
+              <form class="toolbar compact mail-filter-form" id="mail-filter">
                 <label class="field">
                   <span>收件角色 ID</span>
                   <input name="receiveCharacNo" type="search" placeholder="不过滤">
@@ -200,7 +200,7 @@
                 </div>
               </form>
               <div class="table-wrap compact-table">
-                <table class="data-table">
+                <table class="data-table mail-table">
                   <thead>
                     <tr>
                       <th>ID</th>

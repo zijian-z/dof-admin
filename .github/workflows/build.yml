@@ -94,6 +94,7 @@ jobs:
             ./cmd/admin
 
           cp -R deploy package/dof-admin/deploy
+          cp deploy/dof-admin.env.example package/dof-admin/.env.example
 
       - name: Package artifact
         run: |

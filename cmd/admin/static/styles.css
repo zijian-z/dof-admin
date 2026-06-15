@@ -460,6 +460,55 @@ textarea:focus {
   align-items: start;
 }
 
+.mail-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.mail-compose-form {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+}
+
+.mail-compose-form .form-actions {
+  justify-content: flex-end;
+}
+
+.mail-filter-form {
+  grid-template-columns: minmax(180px, 1.2fr) repeat(2, minmax(180px, 1fr)) minmax(100px, 0.6fr) auto;
+  margin-bottom: 12px;
+}
+
+.mail-record-panel {
+  min-width: 0;
+}
+
+.mail-table {
+  min-width: 980px;
+}
+
+.mail-table th:nth-child(1) {
+  width: 92px;
+}
+
+.mail-table th:nth-child(2) {
+  width: 176px;
+}
+
+.mail-table th:nth-child(4) {
+  width: 118px;
+}
+
+.mail-table th:nth-child(5) {
+  width: 170px;
+}
+
+.mail-table th:nth-child(6),
+.mail-table th:nth-child(7) {
+  width: 96px;
+}
+
 .panel {
   min-width: 0;
   padding: 14px;
@@ -689,7 +738,9 @@ textarea:focus {
 
   .toolbar,
   .toolbar.compact,
-  .form-grid {
+  .form-grid,
+  .mail-compose-form,
+  .mail-filter-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -706,6 +757,8 @@ textarea:focus {
   .toolbar,
   .toolbar.compact,
   .form-grid,
+  .mail-compose-form,
+  .mail-filter-form,
   .drawer .form-grid,
   .detail-facts,
   .stat-grid {

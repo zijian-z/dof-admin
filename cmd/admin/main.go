@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	dnfparser "dofadmin"
+	"github.com/joho/godotenv"
 )
 
 //go:embed static/*
@@ -171,6 +173,10 @@ type characPatch struct {
 func main() {
 	_ = mime.AddExtensionType(".js", "application/javascript; charset=utf-8")
 	_ = mime.AddExtensionType(".css", "text/css; charset=utf-8")
+
+	if err := loadExecutableEnv(".env"); err != nil {
+		log.Printf("load .env failed: %v", err)
+	}
 
 	s := &server{
 		pvfPath: resolvePVFPath(),
@@ -1007,6 +1013,21 @@ func envDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func loadExecutableEnv(name string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate executable: %w", err)
+	}
+
+	path := filepath.Join(filepath.Dir(exe), name)
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return godotenv.Load(path)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
