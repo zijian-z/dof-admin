@@ -191,6 +191,8 @@ const commonItemKeys = new Set([
   "stackLimit",
   "icon",
   "iconUrl",
+  "fieldImage",
+  "fieldImageUrl",
   "pvfPath",
   "pvfSource",
   "pvfFields",
@@ -1251,6 +1253,12 @@ function renderItemDetail(item) {
     ["图标帧", item.icon.index ?? 0],
     ["图标接口", item.iconUrl || `/api/items/icon?path=${encodeURIComponent(item.icon.path || "")}&index=${encodeURIComponent(item.icon.index || 0)}`]
   ] : [];
+  const fieldImageUrl = item.fieldImageUrl || imageUrl(item.fieldImage);
+  const fieldImageFacts = item.fieldImage ? [
+    ["大图 IMG", item.fieldImage.path || ""],
+    ["大图帧", item.fieldImage.index ?? 0],
+    ["大图接口", fieldImageUrl || ""]
+  ] : [];
   const stats = Object.entries(item)
     .filter(([key, value]) => !commonItemKeys.has(key) && hasValue(value))
     .map(([key, value]) => `
@@ -1269,6 +1277,7 @@ function renderItemDetail(item) {
         <span class="subtle">${escapeHTML(item.rarityName || "")} · ${escapeHTML(item.attachType || "")}</span>
       </div>
     </div>
+    ${renderDetailPreview(fieldImageUrl)}
     <div class="detail-facts">
       <div class="fact"><span>物品 ID</span><strong>${item.id}</strong></div>
       <div class="fact"><span>类型</span><strong>${escapeHTML(typeName(item.type))}</strong></div>
@@ -1278,6 +1287,7 @@ function renderItemDetail(item) {
       <div class="fact"><span>稀有度</span><strong>${escapeHTML(item.rarityName || "")}</strong></div>
       <div class="fact"><span>PVF 文件</span><strong>${escapeHTML(item.pvfPath || "-")}</strong></div>
       ${iconFacts.map(([label, value]) => `<div class="fact"><span>${escapeHTML(label)}</span><strong>${escapeHTML(formatValue(value) || "-")}</strong></div>`).join("")}
+      ${fieldImageFacts.map(([label, value]) => `<div class="fact"><span>${escapeHTML(label)}</span><strong>${escapeHTML(formatValue(value) || "-")}</strong></div>`).join("")}
     </div>
     <div class="row-actions">
       <button class="btn primary" type="button" data-detail-mail="${item.id}">填入发货</button>
@@ -1291,6 +1301,7 @@ function renderItemDetail(item) {
   `;
   $("#item-detail [data-detail-mail]").addEventListener("click", () => fillMailItem(item.id));
   bindIconFallbacks();
+  bindDetailPreviewFallbacks();
 }
 
 function fillMailItem(id) {
@@ -1383,8 +1394,32 @@ function renderIcon(icon) {
   if (!icon || !icon.path) {
     return `<div class="icon-slot">无</div>`;
   }
-  const src = `/api/items/icon?path=${encodeURIComponent(icon.path)}&index=${encodeURIComponent(icon.index || 0)}`;
+  const src = imageUrl(icon);
   return `<div class="icon-slot"><img class="item-icon" src="${src}" alt=""></div>`;
+}
+
+function imageUrl(image) {
+  if (!image || !image.path) return "";
+  return `/api/items/icon?path=${encodeURIComponent(image.path)}&index=${encodeURIComponent(image.index || 0)}`;
+}
+
+function renderDetailPreview(src) {
+  if (!src) {
+    return `<div class="detail-preview empty">暂无大图</div>`;
+  }
+  return `<div class="detail-preview"><img class="detail-preview-image" src="${src}" alt=""></div>`;
+}
+
+function bindDetailPreviewFallbacks() {
+  $$(".detail-preview-image").forEach((img) => {
+    img.addEventListener("error", () => {
+      const preview = img.closest(".detail-preview");
+      if (preview) {
+        preview.classList.add("empty");
+        preview.textContent = "暂无大图";
+      }
+    }, { once: true });
+  });
 }
 
 function bindIconFallbacks() {

@@ -110,6 +110,8 @@ type itemSummary struct {
 	UsableJobs       []string            `json:"usableJobs,omitempty"`
 	Icon             *dnfparser.ItemIcon `json:"icon,omitempty"`
 	IconURL          string              `json:"iconUrl,omitempty"`
+	FieldImage       *dnfparser.ItemIcon `json:"fieldImage,omitempty"`
+	FieldImageURL    string              `json:"fieldImageUrl,omitempty"`
 	PVFPath          string              `json:"pvfPath,omitempty"`
 	EquipmentType    string              `json:"equipmentType,omitempty"`
 	EquipmentTypeTag string              `json:"equipmentTypeTag,omitempty"`
@@ -996,6 +998,7 @@ func (s *server) attachPVFDebug(item *dnfparser.Item) {
 		return
 	}
 	item.IconURL = iconURL(item.Icon)
+	item.FieldImageURL = iconURL(item.FieldImage)
 	if strings.TrimSpace(item.PVFPath) == "" || strings.TrimSpace(s.pvfPath) == "" {
 		return
 	}
@@ -1327,6 +1330,8 @@ func equipmentSummary(item *dnfparser.Equipment) itemSummary {
 		UsableJobs:       item.UsableJobs,
 		Icon:             item.Icon,
 		IconURL:          iconURL(item.Icon),
+		FieldImage:       item.FieldImage,
+		FieldImageURL:    iconURL(item.FieldImage),
 		PVFPath:          item.PVFPath,
 		EquipmentType:    item.EquipmentType,
 		EquipmentTypeTag: item.EquipmentTypeTag,
@@ -1352,6 +1357,8 @@ func stackableSummary(item *dnfparser.Stackable) itemSummary {
 		UsableJobs:       item.UsableJobs,
 		Icon:             item.Icon,
 		IconURL:          iconURL(item.Icon),
+		FieldImage:       item.FieldImage,
+		FieldImageURL:    iconURL(item.FieldImage),
 		PVFPath:          item.PVFPath,
 		StackableType:    item.StackableType,
 		StackableTypeTag: item.StackableTypeTag,

@@ -195,23 +195,25 @@ type ItemIcon struct {
 
 // Item 物品通用字段（对应 entity.common.Item）。
 type Item struct {
-	ID           int         `json:"id"`
-	Rarity       int         `json:"rarity"`
-	RarityName   string      `json:"rarityName"`
-	Name         string      `json:"name"`
-	Type         string      `json:"type"`       // equipment / stackable / other
-	UsableJobs   []string    `json:"usableJobs"` // 职业中文
-	AttachType   string      `json:"attachType"` // 绑定/交易类型中文
-	MinimumLevel int         `json:"minimumLevel"`
-	Description  string      `json:"description"`
-	Explain      string      `json:"explain"`
-	StackLimit   int         `json:"stackLimit"`
-	Icon         *ItemIcon   `json:"icon,omitempty"`
-	IconURL      string      `json:"iconUrl,omitempty"`
-	PVFPath      string      `json:"pvfPath,omitempty"`
-	PVFSource    string      `json:"pvfSource,omitempty"`
-	PVFFields    *OrderedMap `json:"pvfFields,omitempty"`
-	PVFError     string      `json:"pvfError,omitempty"`
+	ID            int         `json:"id"`
+	Rarity        int         `json:"rarity"`
+	RarityName    string      `json:"rarityName"`
+	Name          string      `json:"name"`
+	Type          string      `json:"type"`       // equipment / stackable / other
+	UsableJobs    []string    `json:"usableJobs"` // 职业中文
+	AttachType    string      `json:"attachType"` // 绑定/交易类型中文
+	MinimumLevel  int         `json:"minimumLevel"`
+	Description   string      `json:"description"`
+	Explain       string      `json:"explain"`
+	StackLimit    int         `json:"stackLimit"`
+	Icon          *ItemIcon   `json:"icon,omitempty"`
+	IconURL       string      `json:"iconUrl,omitempty"`
+	FieldImage    *ItemIcon   `json:"fieldImage,omitempty"`
+	FieldImageURL string      `json:"fieldImageUrl,omitempty"`
+	PVFPath       string      `json:"pvfPath,omitempty"`
+	PVFSource     string      `json:"pvfSource,omitempty"`
+	PVFFields     *OrderedMap `json:"pvfFields,omitempty"`
+	PVFError      string      `json:"pvfError,omitempty"`
 }
 
 // Equipment 装备（对应 entity.equipment.Equipment，Item 内嵌）。
@@ -453,6 +455,16 @@ func (it *Item) parseForScript(s *OrderedMap) {
 			}
 		}
 		it.Icon = ic
+	}
+
+	if fieldImage := omArray(s, "[field image]"); len(fieldImage) > 0 {
+		img := &ItemIcon{Path: normalizeResourcePath(toStr(fieldImage[0]))}
+		if len(fieldImage) >= 2 {
+			if idx, ok := toInt(fieldImage[1]); ok {
+				img.Index = idx
+			}
+		}
+		it.FieldImage = img
 	}
 }
 

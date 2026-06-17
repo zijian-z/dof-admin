@@ -760,6 +760,37 @@ textarea:focus {
   align-items: center;
 }
 
+.detail-preview {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background:
+    linear-gradient(45deg, #eef1ec 25%, transparent 25%),
+    linear-gradient(-45deg, #eef1ec 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eef1ec 75%),
+    linear-gradient(-45deg, transparent 75%, #eef1ec 75%);
+  background-color: #f8faf7;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background-size: 20px 20px;
+  overflow: hidden;
+}
+
+.detail-preview.empty {
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.detail-preview-image {
+  display: block;
+  max-width: min(100%, 520px);
+  max-height: 260px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 .detail-facts,
 .stat-grid {
   display: grid;
