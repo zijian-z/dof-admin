@@ -60,7 +60,9 @@
             </label>
             <label class="field">
               <span>职业</span>
-              <input name="job" type="number" inputmode="numeric" placeholder="job">
+              <select name="job" id="character-job-select">
+                <option value="">全部职业</option>
+              </select>
             </label>
             <label class="field">
               <span>最低等级</span>
@@ -150,7 +152,7 @@
                 </label>
                 <label class="field">
                   <span>红字类型</span>
-                  <input name="amplifyOption" type="number" inputmode="numeric" value="0">
+                  <select name="amplifyOption" id="mail-amplify-option"></select>
                 </label>
                 <label class="field">
                   <span>红字数值</span>
@@ -351,15 +353,21 @@
                 </label>
                 <label class="field" data-advanced-field="job">
                   <span>基础职业</span>
-                  <input name="job" type="number" inputmode="numeric" list="job-options" placeholder="可空">
+                  <select name="job" id="advanced-job-select">
+                    <option value="">不修改</option>
+                  </select>
                 </label>
                 <label class="field" data-advanced-field="growType">
                   <span>转职分支</span>
-                  <input name="growType" type="number" inputmode="numeric" list="grow-type-options" placeholder="可空">
+                  <select name="growType" id="advanced-grow-type-select">
+                    <option value="">不修改</option>
+                  </select>
                 </label>
                 <label class="field" data-advanced-field="expertJob">
                   <span>副职业</span>
-                  <input name="expertJob" type="number" inputmode="numeric" list="expert-job-options" placeholder="可空">
+                  <select name="expertJob" id="advanced-expert-job-select">
+                    <option value="">不修改</option>
+                  </select>
                 </label>
                 <label class="field" data-advanced-field="moveUid">
                   <span>移动到账号 UID</span>
@@ -377,32 +385,6 @@
                   <button class="btn primary" type="submit" id="advanced-save-button">保存</button>
                 </div>
               </form>
-              <datalist id="job-options">
-                <option value="0" label="鬼剑士"></option>
-                <option value="1" label="格斗家(女)"></option>
-                <option value="2" label="神枪手(男)"></option>
-                <option value="3" label="魔法师(女)"></option>
-                <option value="4" label="圣职者"></option>
-                <option value="5" label="盗贼"></option>
-                <option value="6" label="神枪手(女)"></option>
-                <option value="7" label="格斗家(男)"></option>
-                <option value="8" label="魔法师(男)"></option>
-                <option value="9" label="暗夜/外传"></option>
-              </datalist>
-              <datalist id="grow-type-options">
-                <option value="0" label="未转职"></option>
-                <option value="1" label="一转分支 1"></option>
-                <option value="2" label="一转分支 2"></option>
-                <option value="3" label="一转分支 3"></option>
-                <option value="4" label="一转分支 4"></option>
-              </datalist>
-              <datalist id="expert-job-options">
-                <option value="0" label="无副职业"></option>
-                <option value="1" label="炼金术师"></option>
-                <option value="2" label="分解师"></option>
-                <option value="3" label="附魔师"></option>
-                <option value="4" label="控偶师"></option>
-              </datalist>
             </section>
 
             <section class="panel">
@@ -414,7 +396,7 @@
                 </label>
                 <label class="field">
                   <span>段位</span>
-                  <input name="grade" type="number" inputmode="numeric" value="0">
+                  <select name="grade" id="pvp-grade-select"></select>
                 </label>
                 <label class="field">
                   <span>胜场</span>

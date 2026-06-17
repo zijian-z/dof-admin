@@ -136,6 +136,47 @@ const advancedActions = {
   unban: { label: "解封", fields: [], confirm: true }
 };
 
+const jobOptions = [
+  { value: 0, label: "鬼剑士(男)", growTypes: { 0: "未转职", 1: "剑魂", 2: "鬼泣", 3: "狂战士", 4: "阿修罗", 17: "剑圣", 18: "弑魂", 19: "狱血魔神", 20: "大暗黑天" } },
+  { value: 1, label: "格斗家(女)", growTypes: { 0: "未转职", 1: "气功师", 2: "散打", 3: "街霸", 4: "柔道家", 17: "百花缭乱", 18: "武神", 19: "毒王", 20: "暴风眼" } },
+  { value: 2, label: "神枪手(男)", growTypes: { 0: "未转职", 1: "漫游枪手", 2: "枪炮师", 3: "机械师", 4: "弹药专家", 17: "枪神", 18: "狂暴者", 19: "机械战神", 20: "大将军" } },
+  { value: 3, label: "魔法师(女)", growTypes: { 0: "未转职", 1: "元素师", 2: "召唤师", 3: "战斗法师", 4: "魔道学者", 17: "大魔导师", 18: "月之女皇", 19: "贝亚娜斗神", 20: "魔术师" } },
+  { value: 4, label: "圣职者(男)", growTypes: { 0: "未转职", 1: "圣骑士", 2: "蓝拳圣使", 3: "驱魔师", 4: "复仇者", 17: "天启者", 18: "神之手", 19: "龙斗士", 20: "末日守护者" } },
+  { value: 5, label: "神枪手(女)", growTypes: { 0: "未转职", 1: "漫游枪手", 2: "枪炮师", 3: "机械师", 4: "弹药专家", 17: "沾血蔷薇", 18: "重炮掌控者", 19: "机械之心", 20: "战争女神" } },
+  { value: 6, label: "暗夜使者(女)", growTypes: { 0: "未转职", 1: "刺客", 2: "死灵术士", 17: "银月", 18: "灵魂收割者" } },
+  { value: 7, label: "格斗家(男)", growTypes: { 0: "未转职", 1: "气功师", 2: "散打", 3: "街霸", 4: "柔道家", 17: "狂虎帝", 18: "武极", 19: "千手罗汉", 20: "风林火山" } },
+  { value: 8, label: "魔法师(男)", growTypes: { 0: "未转职", 1: "元素爆破师", 2: "冰结师", 17: "元素爆破师", 18: "冰冻之心" } },
+  { value: 9, label: "黑暗武士(男)", growTypes: { 0: "未转职", 1: "黑暗武士", 17: "自我觉醒" } },
+  { value: 10, label: "女鬼剑士", growTypes: { 0: "未转职", 1: "驭剑士", 2: "流浪武士", 3: "契魔者", 4: "暗殿骑士" } }
+];
+
+const expertJobOptions = [
+  { value: 0, label: "无副职业" },
+  { value: 1, label: "附魔师" },
+  { value: 2, label: "炼金术师" },
+  { value: 3, label: "分解师" },
+  { value: 4, label: "控偶师" }
+];
+
+const amplifyOptions = [
+  { value: 0, label: "无红字" },
+  { value: 1, label: "异次元体力" },
+  { value: 2, label: "异次元精神" },
+  { value: 3, label: "异次元力量" },
+  { value: 4, label: "异次元智力" }
+];
+
+const pvpGradeOptions = [
+  ...Array.from({ length: 10 }, (_, index) => ({ value: index, label: `${10 - index}级` })),
+  ...Array.from({ length: 10 }, (_, index) => ({ value: index + 10, label: `${index + 1}段` })),
+  ...Array.from({ length: 10 }, (_, index) => ({ value: index + 20, label: `至尊${index + 1}` })),
+  { value: 30, label: "达人" },
+  { value: 31, label: "名人" },
+  { value: 32, label: "小霸王" },
+  { value: 33, label: "霸王" },
+  { value: 34, label: "斗神" }
+];
+
 const commonItemKeys = new Set([
   "id",
   "rarity",
@@ -162,7 +203,102 @@ const commonItemKeys = new Set([
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
+function populateEnumSelects() {
+  fillStaticSelect("#character-job-select", jobOptions, { keepFirst: true });
+  fillStaticSelect("#advanced-job-select", jobOptions, { keepFirst: true });
+  updateGrowTypeOptions("#advanced-grow-type-select", "");
+  fillStaticSelect("#advanced-expert-job-select", expertJobOptions, { keepFirst: true });
+  fillStaticSelect("#mail-amplify-option", amplifyOptions);
+  fillStaticSelect("#pvp-grade-select", pvpGradeOptions);
+}
+
+function fillStaticSelect(selector, values, options = {}) {
+  const select = $(selector);
+  if (!select) return;
+  const previous = select.value;
+  const first = options.keepFirst ? select.options[0] : null;
+  select.innerHTML = "";
+  if (first) select.appendChild(first);
+  values.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = String(item.value);
+    option.textContent = `${item.label} (${item.value})`;
+    select.appendChild(option);
+  });
+  if (previous && Array.from(select.options).some((option) => option.value === previous)) {
+    select.value = previous;
+  }
+}
+
+function updateGrowTypeOptions(selector, jobValue, selectedValue) {
+  const select = $(selector);
+  if (!select) return;
+  const previous = selectedValue !== undefined ? String(selectedValue) : select.value;
+  const first = select.options[0] || new Option("不修改", "");
+  const job = jobOptions.find((item) => String(item.value) === String(jobValue));
+  select.innerHTML = "";
+  select.appendChild(first);
+  const entries = Object.entries(job?.growTypes || {});
+  entries.forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = `${label} (${value})`;
+    select.appendChild(option);
+  });
+  if (previous && !Array.from(select.options).some((option) => option.value === previous)) {
+    const option = document.createElement("option");
+    option.value = previous;
+    option.textContent = `未知转职 (${previous})`;
+    select.appendChild(option);
+  }
+  if (previous && Array.from(select.options).some((option) => option.value === previous)) {
+    select.value = previous;
+  }
+}
+
+function setSelectValuePreservingUnknown(selector, value, unknownLabel) {
+  const select = $(selector);
+  if (!select) return;
+  const text = String(value ?? "");
+  if (text && !Array.from(select.options).some((option) => option.value === text)) {
+    const option = document.createElement("option");
+    option.value = text;
+    option.textContent = `${unknownLabel} (${text})`;
+    select.appendChild(option);
+  }
+  select.value = text;
+}
+
+function optionLabel(options, value, fallback) {
+  const option = options.find((item) => String(item.value) === String(value));
+  if (option) return `${option.label} (${option.value})`;
+  return fallback;
+}
+
+function jobLabel(value) {
+  return optionLabel(jobOptions, value, `未知职业(${value ?? "-"})`);
+}
+
+function growTypeLabel(jobValue, growTypeValue) {
+  const job = jobOptions.find((item) => String(item.value) === String(jobValue));
+  const label = job?.growTypes?.[String(growTypeValue)];
+  return label ? `${label} (${growTypeValue})` : `未知转职(${growTypeValue ?? "-"})`;
+}
+
+function expertJobLabel(value) {
+  return optionLabel(expertJobOptions, value, `未知副职业(${value ?? "-"})`);
+}
+
+function pvpGradeLabel(value) {
+  return optionLabel(pvpGradeOptions, value, `未知段位(${value ?? "-"})`);
+}
+
+function amplifyOptionLabel(value) {
+  return optionLabel(amplifyOptions, value, `未知红字(${value ?? "-"})`);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  populateEnumSelects();
   bindNavigation();
   bindCharacters();
   bindOperations();
@@ -229,6 +365,9 @@ function bindCharacters() {
 
 function bindOperations() {
   updateAdvancedActionFields();
+  $("#advanced-character-form [name='job']").addEventListener("change", () => {
+    updateGrowTypeOptions("#advanced-character-form [name='growType']", $("#advanced-character-form [name='job']").value, "");
+  });
   $("#resource-query-form").addEventListener("submit", (event) => {
     event.preventDefault();
     loadResources();
@@ -245,6 +384,7 @@ function bindMail() {
   $("#clear-mail-form").addEventListener("click", () => {
     $("#mail-form").reset();
     $("#mail-form [name='count']").value = "1";
+    $("#mail-form [name='amplifyOption']").value = "0";
     $("#mail-form [name='gold']").value = "0";
     $("#mail-form [name='letterId']").value = "0";
     $("#mail-form [name='endurance']").value = "0";
@@ -492,7 +632,12 @@ function renderCharacters() {
             <span class="subtle">UID ${item.mid}</span>
           </div>
         </td>
-        <td>${item.job}</td>
+        <td>
+          <div class="main-cell">
+            <span>${escapeHTML(jobLabel(item.job))}</span>
+            <span class="subtle">${escapeHTML(growTypeLabel(item.job, item.growType))}</span>
+          </div>
+        </td>
         <td>${item.lev}</td>
         <td>${item.hp} / ${item.maxHp} · MP ${item.maxMp}</td>
         <td>${item.attackSpeed} / ${item.castSpeed} / ${item.moveSpeed}</td>
@@ -524,6 +669,10 @@ function fillOperations(character) {
   advancedForm.elements.characNo.value = String(character.characNo);
   advancedForm.elements.action.value = "rename";
   advancedForm.elements.name.value = character.characName || "";
+  advancedForm.elements.level.value = character.lev ?? "";
+  setSelectValuePreservingUnknown("#advanced-job-select", character.job ?? "", "未知职业");
+  updateGrowTypeOptions("#advanced-grow-type-select", character.job ?? "", character.growType ?? "");
+  setSelectValuePreservingUnknown("#advanced-expert-job-select", character.expertJob ?? "", "未知副职业");
   updateAdvancedActionFields();
   $("#pvp-form [name='characNo']").value = String(character.characNo);
   setView("operations");
@@ -537,9 +686,9 @@ function fillAdvancedCharacter(character) {
   form.elements.action.value = "rename";
   form.elements.name.value = character.characName || "";
   form.elements.level.value = character.lev ?? "";
-  form.elements.job.value = character.job ?? "";
-  form.elements.growType.value = character.growType ?? "";
-  form.elements.expertJob.value = character.expertJob ?? "";
+  setSelectValuePreservingUnknown("#advanced-job-select", character.job ?? "", "未知职业");
+  updateGrowTypeOptions("#advanced-grow-type-select", character.job ?? "", character.growType ?? "");
+  setSelectValuePreservingUnknown("#advanced-expert-job-select", character.expertJob ?? "", "未知副职业");
   $("#resource-query-form [name='account']").value = character.accountName || "";
   $("#resource-query-form [name='characName']").value = character.characName || "";
   $("#resource-query-form [name='uid']").value = String(character.mid);
@@ -588,6 +737,10 @@ async function loadResources() {
       form.elements.characName.value = data.characName || form.elements.characName.value;
       $("#advanced-character-form [name='characNo']").value = String(data.characNo);
       if (data.characName) $("#advanced-character-form [name='name']").value = data.characName;
+      $("#advanced-character-form [name='level']").value = data.lev ?? "";
+      setSelectValuePreservingUnknown("#advanced-job-select", data.job ?? "", "未知职业");
+      updateGrowTypeOptions("#advanced-grow-type-select", data.job ?? "", data.growType ?? "");
+      setSelectValuePreservingUnknown("#advanced-expert-job-select", data.expertJob ?? "", "未知副职业");
       $("#pvp-form [name='characNo']").value = String(data.characNo);
     }
     renderResources(data);
@@ -603,6 +756,9 @@ function renderResources(data) {
     ["账号 UID", data.uid],
     ["角色名", data.characName || "-"],
     ["角色 ID", data.characNo || "-"],
+    ["职业", data.characNo ? jobLabel(data.job) : "-"],
+    ["转职", data.characNo ? growTypeLabel(data.job, data.growType) : "-"],
+    ["副职业", data.characNo ? expertJobLabel(data.expertJob) : "-"],
     ["D币 / 点券", data.cera],
     ["D点 / 代币", data.ceraPoint],
     ["账号金库金币", data.accountMoney],
@@ -615,7 +771,7 @@ function renderResources(data) {
     ["建角限制", data.createLimitCount],
     ["封禁", data.banned ? `是${data.banEndTime ? ` 至 ${formatDate(data.banEndTime)}` : ""}` : "否"],
     ["封禁原因", data.banReason || "-"],
-    ["PVP", `段位 ${data.pvpGrade} · 胜场 ${data.pvpWin} · 胜点 ${data.pvpPoint}`]
+    ["PVP", `${pvpGradeLabel(data.pvpGrade)} · 胜场 ${data.pvpWin} · 胜点 ${data.pvpPoint}`]
   ];
   $("#resource-summary").innerHTML = rows.map(([label, value]) => `
     <div class="fact">
@@ -858,7 +1014,7 @@ function renderMail() {
         <td>${formatDate(item.occTime)}</td>
         <td title="${escapeHTML(item.sendCharacName)}">${escapeHTML(item.sendCharacName)}</td>
         <td>${escapeHTML(item.receiveCharacNo)}</td>
-        <td>${item.itemId}${item.upgrade ? ` +${item.upgrade}` : ""}${item.seperateUpgrade ? ` / 锻${item.seperateUpgrade}` : ""}</td>
+        <td>${mailItemText(item)}</td>
         <td>${mailCountText(item)}</td>
         <td>${item.gold}</td>
         <td>${mailTypeName(item)}</td>
@@ -876,6 +1032,14 @@ function mailTypeName(item) {
   if (item.creature) return "宠物";
   if (item.letterId && !item.itemId) return "信件";
   return "普通";
+}
+
+function mailItemText(item) {
+  const parts = [String(item.itemId || "-")];
+  if (item.upgrade) parts.push(`+${item.upgrade}`);
+  if (item.seperateUpgrade) parts.push(`锻${item.seperateUpgrade}`);
+  if (item.amplifyOption) parts.push(`${amplifyOptionLabel(item.amplifyOption)} ${item.amplifyValue || 0}`);
+  return parts.join(" / ");
 }
 
 function mailCountText(item) {

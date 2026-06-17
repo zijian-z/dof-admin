@@ -198,6 +198,8 @@ type MailRow struct {
 	Count           int       `json:"count"`
 	Upgrade         int       `json:"upgrade"`
 	SeperateUpgrade int       `json:"seperateUpgrade"`
+	AmplifyOption   int       `json:"amplifyOption"`
+	AmplifyValue    int       `json:"amplifyValue"`
 	Gold            int       `json:"gold"`
 	LetterID        int       `json:"letterId"`
 	Avatar          bool      `json:"avatar"`
@@ -232,7 +234,7 @@ func (g *GameDB) ListMail(receiveCharacNo string, start, end *time.Time, page, p
 		args = append(args, *end)
 	}
 	q := "SELECT postal_id, occ_time, send_charac_name, receive_charac_no, item_id, " +
-		"add_info, `upgrade`, seperate_upgrade, gold, letter_id, avata_flag, creature_flag, delete_flag " +
+		"add_info, `upgrade`, seperate_upgrade, amplify_option, amplify_value, gold, letter_id, avata_flag, creature_flag, delete_flag " +
 		"FROM `taiwan_cain_2nd`.`postal`"
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
@@ -252,7 +254,7 @@ func (g *GameDB) ListMail(receiveCharacNo string, start, end *time.Time, page, p
 		var avatarFlag, creatureFlag int
 		var addInfo int64
 		if err := rows.Scan(&r.PostalID, &r.OccTime, &r.SendCharacName, &r.ReceiveCharacNo,
-			&r.ItemID, &addInfo, &r.Upgrade, &r.SeperateUpgrade, &r.Gold, &r.LetterID,
+			&r.ItemID, &addInfo, &r.Upgrade, &r.SeperateUpgrade, &r.AmplifyOption, &r.AmplifyValue, &r.Gold, &r.LetterID,
 			&avatarFlag, &creatureFlag, &r.DeleteFlag); err != nil {
 			return nil, err
 		}
@@ -357,6 +359,10 @@ type AccountResources struct {
 	AccountName      string `json:"accountName,omitempty"`
 	CharacNo         int    `json:"characNo,omitempty"`
 	CharacName       string `json:"characName,omitempty"`
+	Job              int    `json:"job"`
+	GrowType         int    `json:"growType"`
+	ExpertJob        int    `json:"expertJob"`
+	Lev              int    `json:"lev"`
 	Cera             int64  `json:"cera"`
 	CeraPoint        int64  `json:"ceraPoint"`
 	AccountMoney     int64  `json:"accountMoney"`
@@ -872,6 +878,10 @@ func (g *GameDB) GetAccountResources(uid int64, characNo int) (AccountResources,
 			return out, fmt.Errorf("角色不存在: %d", characNo)
 		}
 		out.CharacName = c.CharacName
+		out.Job = c.Job
+		out.GrowType = c.GrowType
+		out.ExpertJob = c.ExpertJob
+		out.Lev = c.Lev
 		if out.AccountName == "" {
 			out.AccountName = c.AccountName
 		}
