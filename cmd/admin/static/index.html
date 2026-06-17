@@ -29,7 +29,6 @@
       <header class="topbar">
         <div>
           <h1 id="view-title">角色管理</h1>
-          <p id="view-subtitle">查询角色、编辑常用属性，并快速跳转发货。</p>
         </div>
         <div class="status-strip" id="status-strip" aria-live="polite">
           <span class="status-pill muted">状态加载中</span>
@@ -258,7 +257,7 @@
           </div>
 
           <div class="ops-grid">
-            <section class="panel">
+            <section class="panel" id="operations-resource-panel" tabindex="-1">
               <h3>账号资源</h3>
               <form class="form-grid ops-query-form" id="resource-query-form">
                 <label class="field">
@@ -322,7 +321,7 @@
               </form>
             </section>
 
-            <section class="panel">
+            <section class="panel" id="operations-advanced-panel" tabindex="-1">
               <h3>角色高级操作</h3>
               <form class="form-grid advanced-form" id="advanced-character-form">
                 <label class="field">

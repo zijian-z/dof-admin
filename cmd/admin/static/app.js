@@ -11,24 +11,19 @@ const state = {
 
 const viewMeta = {
   characters: {
-    title: "角色管理",
-    subtitle: "查询角色、编辑常用属性，并快速跳转发货。"
+    title: "角色管理"
   },
   operations: {
-    title: "运营管理",
-    subtitle: "查询账号资源，调整点券、金币、SP/TP/QP，并执行角色高级操作。"
+    title: "运营管理"
   },
   mail: {
-    title: "邮件发货",
-    subtitle: "发送物品、金币或信件，并查看最近邮件记录。"
+    title: "邮件发货"
   },
   items: {
-    title: "物品库",
-    subtitle: "搜索 PVF 解析出的装备和道具，支持从结果直接填入发货表单。"
+    title: "物品库"
   },
   system: {
-    title: "系统状态",
-    subtitle: "查看数据库、PVF 物品缓存和 NPK 图标资源的连接状态。"
+    title: "系统状态"
   }
 };
 
@@ -363,7 +358,6 @@ function setView(view) {
   $$(".nav-btn").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $$(".view").forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
   $("#view-title").textContent = viewMeta[view].title;
-  $("#view-subtitle").textContent = viewMeta[view].subtitle;
 
   if (view === "characters" && state.characters.items.length === 0) loadCharacters();
   if (view === "operations" && !state.resources) loadResources();
@@ -534,6 +528,7 @@ function fillOperations(character) {
   $("#pvp-form [name='characNo']").value = String(character.characNo);
   setView("operations");
   loadResources();
+  focusOperationsPanel("#operations-resource-panel", "#resource-query-form [name='characName']");
 }
 
 function fillAdvancedCharacter(character) {
@@ -553,6 +548,21 @@ function fillAdvancedCharacter(character) {
   updateAdvancedActionFields();
   setView("operations");
   loadResources();
+  focusOperationsPanel("#operations-advanced-panel", "#advanced-character-form [name='action']");
+}
+
+function focusOperationsPanel(panelSelector, focusSelector) {
+  requestAnimationFrame(() => {
+    const panel = $(panelSelector);
+    if (!panel) return;
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    panel.classList.remove("focus-panel");
+    void panel.offsetWidth;
+    panel.classList.add("focus-panel");
+    const target = $(focusSelector);
+    if (target) target.focus({ preventScroll: true });
+    window.setTimeout(() => panel.classList.remove("focus-panel"), 1600);
+  });
 }
 
 async function loadResources() {

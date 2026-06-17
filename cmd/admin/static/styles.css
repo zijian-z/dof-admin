@@ -147,7 +147,6 @@ button {
   line-height: 1.2;
 }
 
-.topbar p,
 .section-head p,
 .drawer p {
   margin: 4px 0 0;
@@ -556,6 +555,11 @@ textarea:focus {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
+}
+
+.panel.focus-panel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .panel h3 {
