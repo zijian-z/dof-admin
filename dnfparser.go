@@ -1335,15 +1335,24 @@ func (n *Npk) readNpkCache(path string) error {
 	defer n.mu.Unlock()
 	for _, t := range tables {
 		t.Name = normalizeResourcePath(t.Name)
-		if t.Name == "" {
-			continue
-		}
-		if _, ok := n.nameTable[t.Name]; !ok {
-			n.nameTable[t.Name] = base
-			n.indexTab[t.Name] = t
+		n.registerImgTable(t.Name, base, t)
+		if trimmed, ok := strings.CutPrefix(t.Name, "sprite/"); ok {
+			n.registerImgTable(trimmed, base, t)
 		}
 	}
 	return nil
+}
+
+func (n *Npk) registerImgTable(name string, npkFile string, table NpkImgTable) {
+	name = normalizeResourcePath(name)
+	if name == "" {
+		return
+	}
+	if _, ok := n.nameTable[name]; ok {
+		return
+	}
+	n.nameTable[name] = npkFile
+	n.indexTab[name] = table
 }
 
 func readImgTables(r io.Reader) ([]NpkImgTable, error) {
