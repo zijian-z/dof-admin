@@ -37,6 +37,11 @@ type server struct {
 	npkMu   sync.Mutex
 	npk     *dnfparser.Npk
 	npkErr  error
+
+	expMu    sync.Mutex
+	expOnce  sync.Once
+	expTable []int64
+	expErr   error
 }
 
 var (
@@ -155,6 +160,10 @@ type mailPayload struct {
 	Gold            int    `json:"gold"`
 	Seal            bool   `json:"seal"`
 	LetterID        int    `json:"letterId"`
+	Message         string `json:"message"`
+	Avatar          bool   `json:"avatar"`
+	Creature        bool   `json:"creature"`
+	Endurance       int    `json:"endurance"`
 }
 
 type characPatch struct {
@@ -170,6 +179,45 @@ type characPatch struct {
 	PhyDefense  *int `json:"phyDefense"`
 	HitRecovery *int `json:"hitRecovery"`
 	Jump        *int `json:"jump"`
+}
+
+type resourcePatchPayload struct {
+	UID      int64  `json:"uid"`
+	CharacNo int    `json:"characNo"`
+	Target   string `json:"target"`
+	Mode     string `json:"mode"`
+	Value    int64  `json:"value"`
+}
+
+type renamePayload struct {
+	Name string `json:"name"`
+}
+
+type levelPayload struct {
+	Level int `json:"level"`
+}
+
+type jobPayload struct {
+	Job       *int `json:"job"`
+	GrowType  *int `json:"growType"`
+	ExpertJob *int `json:"expertJob"`
+}
+
+type movePayload struct {
+	UID int64 `json:"uid"`
+}
+
+type banPayload struct {
+	UID    int64  `json:"uid"`
+	Days   int    `json:"days"`
+	Reason string `json:"reason"`
+}
+
+type pvpPayload struct {
+	Grade    int `json:"grade"`
+	Win      int `json:"win"`
+	Point    int `json:"point"`
+	WinPoint int `json:"winPoint"`
 }
 
 func main() {
@@ -189,9 +237,11 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
+	mux.HandleFunc("/api/resources", s.handleResources)
 	mux.HandleFunc("/api/characters", s.handleCharacters)
 	mux.HandleFunc("/api/characters/", s.handleCharacter)
 	mux.HandleFunc("/api/mail", s.handleMail)
+	mux.HandleFunc("/api/mail/", s.handleMailItem)
 	mux.HandleFunc("/api/reset-create-limit", s.handleResetCreateLimit)
 	mux.HandleFunc("/api/items/icon", s.handleItemIcon)
 	mux.HandleFunc("/api/items/reload", s.handleReloadItems)
@@ -328,14 +378,83 @@ func (s *server) handleCharacters(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *server) handleResources(w http.ResponseWriter, r *http.Request) {
+	game, ok := s.requireGame(w)
+	if !ok {
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		q := r.URL.Query()
+		uid := int64Value(q.Get("uid"), 0)
+		characNo := intValue(q.Get("characNo"), 0)
+		resources, err := game.GetAccountResources(uid, characNo)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, resources)
+	case http.MethodPost:
+		var payload resourcePatchPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+			return
+		}
+		uid := payload.UID
+		if uid <= 0 && payload.CharacNo > 0 {
+			c, err := game.GetCharac(payload.CharacNo)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if c == nil {
+				writeError(w, http.StatusNotFound, "character not found")
+				return
+			}
+			uid = c.Mid
+		}
+		if uid <= 0 {
+			writeError(w, http.StatusBadRequest, "uid or characNo is required")
+			return
+		}
+		err := game.ApplyResourcePatch(uid, payload.CharacNo, dnfparser.ResourcePatch{
+			Target: payload.Target,
+			Mode:   payload.Mode,
+			Value:  payload.Value,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		resources, err := game.GetAccountResources(uid, payload.CharacNo)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, resources)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
 func (s *server) handleCharacter(w http.ResponseWriter, r *http.Request) {
 	game, ok := s.requireGame(w)
 	if !ok {
 		return
 	}
-	id, ok := pathInt(strings.TrimPrefix(r.URL.Path, "/api/characters/"))
-	if !ok {
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/characters/"), "/"), "/")
+	if len(parts) < 1 || len(parts) > 2 {
+		writeError(w, http.StatusBadRequest, "invalid character path")
+		return
+	}
+	id, err := strconv.Atoi(parts[0])
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid character id")
+		return
+	}
+	if len(parts) == 2 {
+		s.handleCharacterAction(w, r, game, id, parts[1])
 		return
 	}
 
@@ -380,6 +499,129 @@ func (s *server) handleCharacter(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (s *server) handleCharacterAction(w http.ResponseWriter, r *http.Request, game *dnfparser.GameDB, id int, action string) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	current, err := game.GetCharac(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if current == nil {
+		writeError(w, http.StatusNotFound, "character not found")
+		return
+	}
+
+	switch action {
+	case "rename":
+		var payload renamePayload
+		if err := decodeJSON(r, &payload); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := game.RenameCharac(id, dnfparser.SimpToTrad(payload.Name)); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "level":
+		var payload levelPayload
+		if err := decodeJSON(r, &payload); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := game.SetCharacLevel(id, payload.Level, s.loadExpTable()); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "job":
+		var payload jobPayload
+		if err := decodeJSON(r, &payload); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := game.SetCharacJob(id, payload.Job, payload.GrowType, payload.ExpertJob); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "delete":
+		if err := game.SetCharacDeleted(id, true); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "recover":
+		if err := game.SetCharacDeleted(id, false); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "move":
+		var payload movePayload
+		if err := decodeJSON(r, &payload); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := game.MoveCharacToAccount(id, payload.UID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "ban":
+		var payload banPayload
+		if err := decodeJSON(r, &payload); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		uid := payload.UID
+		if uid <= 0 {
+			uid = current.Mid
+		}
+		if err := game.BanAccount(uid, payload.Days, payload.Reason); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "unban":
+		var payload banPayload
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		uid := payload.UID
+		if uid <= 0 {
+			uid = current.Mid
+		}
+		if err := game.UnbanAccount(uid); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "reset-create-limit":
+		if err := game.ResetCreateLimitForAccount(current.Mid); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	case "pvp":
+		var payload pvpPayload
+		if err := decodeJSON(r, &payload); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := game.SetPVP(id, dnfparser.PVPInfo{
+			Grade:    payload.Grade,
+			Win:      payload.Win,
+			Point:    payload.Point,
+			WinPoint: payload.WinPoint,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	default:
+		writeError(w, http.StatusNotFound, "unknown character action")
+		return
+	}
+	updated, err := game.GetCharac(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 }
 
 func applyCharacPatch(c *dnfparser.Charac, p characPatch) {
@@ -463,8 +705,8 @@ func (s *server) handleMail(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "receiveCharacNo is required")
 			return
 		}
-		if payload.ItemID <= 0 && payload.Gold <= 0 && payload.LetterID <= 0 {
-			writeError(w, http.StatusBadRequest, "itemId, gold or letterId is required")
+		if payload.ItemID <= 0 && payload.Gold <= 0 && payload.LetterID <= 0 && strings.TrimSpace(payload.Message) == "" {
+			writeError(w, http.StatusBadRequest, "itemId, gold, letterId or message is required")
 			return
 		}
 		postalID, err := game.SendMail(dnfparser.Mail{
@@ -479,12 +721,59 @@ func (s *server) handleMail(w http.ResponseWriter, r *http.Request) {
 			Gold:            payload.Gold,
 			Seal:            payload.Seal,
 			LetterID:        payload.LetterID,
+			Message:         payload.Message,
+			Avatar:          payload.Avatar,
+			Creature:        payload.Creature,
+			Endurance:       payload.Endurance,
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]int64{"postalId": postalID})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleMailItem(w http.ResponseWriter, r *http.Request) {
+	game, ok := s.requireGame(w)
+	if !ok {
+		return
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/mail/"), "/"), "/")
+	if len(parts) == 2 && parts[0] == "character" {
+		if r.Method != http.MethodDelete {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if strings.TrimSpace(parts[1]) == "" {
+			writeError(w, http.StatusBadRequest, "character id is required")
+			return
+		}
+		if err := game.DeleteMailByCharac(parts[1]); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	if len(parts) != 1 {
+		writeError(w, http.StatusBadRequest, "invalid mail path")
+		return
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid postal id")
+		return
+	}
+	switch r.Method {
+	case http.MethodDelete:
+		if err := game.DeleteMail(id); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
@@ -750,6 +1039,29 @@ func (s *server) ensureNpk() (*dnfparser.Npk, error) {
 	}
 	s.npk, s.npkErr = dnfparser.OpenNpk(s.npkRoot)
 	return s.npk, s.npkErr
+}
+
+func (s *server) loadExpTable() []int64 {
+	if strings.TrimSpace(s.pvfPath) == "" {
+		return nil
+	}
+	s.expOnce.Do(func() {
+		pvf, err := dnfparser.OpenPvfWithCharset(s.pvfPath, s.pvfCharset)
+		s.expMu.Lock()
+		defer s.expMu.Unlock()
+		if err != nil {
+			s.expErr = err
+			return
+		}
+		s.expTable = pvf.GetExpTable()
+	})
+	s.expMu.Lock()
+	defer s.expMu.Unlock()
+	if s.expErr != nil {
+		log.Printf("load exp table failed: %v", s.expErr)
+		return nil
+	}
+	return append([]int64(nil), s.expTable...)
 }
 
 type itemFilter struct {
@@ -1049,6 +1361,25 @@ func intValue(raw string, def int) int {
 		return def
 	}
 	return v
+}
+
+func int64Value(raw string, def int64) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+func decodeJSON(r *http.Request, v interface{}) error {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		return fmt.Errorf("invalid json: %w", err)
+	}
+	return nil
 }
 
 func envDefault(key, def string) string {

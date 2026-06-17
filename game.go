@@ -74,6 +74,10 @@ type Mail struct {
 	Gold            int    // 金币数量
 	Seal            bool   // 物品是否封装（SS 禁止封装）
 	LetterID        int    // 信件ID，纯物品邮件传 0
+	Message         string // 信件正文，非空时自动创建 letter
+	Avatar          bool   // 时装邮件：先写 user_items，再把 ui_id 放入 add_info
+	Creature        bool   // 宠物邮件：先写 creature_items，再把 ui_id 放入 add_info
+	Endurance       int    // 耐久
 }
 
 // SendMail 向游戏角色发送一封物品邮件（对应 PostalServiceImpl.sendMail）。
@@ -86,18 +90,101 @@ func (g *GameDB) SendMail(m Mail) (int64, error) {
 	if m.Count <= 0 {
 		m.Count = 1
 	}
+	if m.Avatar && m.Creature {
+		return 0, fmt.Errorf("发送邮件失败: avatar and creature cannot both be true")
+	}
+	if strings.TrimSpace(m.Message) != "" && m.LetterID == 0 {
+		letterID, err := g.CreateLetter(m.ReceiveCharacNo, m.SendCharacName, m.Message)
+		if err != nil {
+			return 0, err
+		}
+		m.LetterID = int(letterID)
+	}
+
+	occTime := time.Now()
+	addInfo := int64(m.Count)
+	if m.Avatar {
+		uiID, err := g.createUserItem(m.ReceiveCharacNo, m.ItemID, occTime)
+		if err != nil {
+			return 0, err
+		}
+		addInfo = uiID
+	} else if m.Creature {
+		uiID, err := g.createCreatureItem(m.ReceiveCharacNo, m.ItemID, occTime)
+		if err != nil {
+			return 0, err
+		}
+		addInfo = uiID
+	}
+
 	const q = "INSERT INTO `taiwan_cain_2nd`.`postal` " +
 		"(occ_time, send_charac_name, receive_charac_no, amplify_option, amplify_value, " +
-		" seperate_upgrade, seal_flag, item_id, add_info, `upgrade`, gold, letter_id) " +
-		"VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		" seperate_upgrade, seal_flag, item_id, add_info, `upgrade`, gold, letter_id, " +
+		" avata_flag, creature_flag, endurance, unlimit_flag) " +
+		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
 	res, err := g.db.Exec(q,
-		m.SendCharacName, m.ReceiveCharacNo, m.AmplifyOption, m.AmplifyValue,
-		m.SeperateUpgrade, boolToInt(m.Seal), m.ItemID, m.Count, m.Upgrade,
-		m.Gold, m.LetterID)
+		occTime, m.SendCharacName, m.ReceiveCharacNo, m.AmplifyOption, m.AmplifyValue,
+		m.SeperateUpgrade, boolToInt(m.Seal), m.ItemID, addInfo, m.Upgrade,
+		m.Gold, m.LetterID, boolToInt(m.Avatar), boolToInt(m.Creature), m.Endurance)
 	if err != nil {
 		return 0, fmt.Errorf("发送邮件失败: %w", err)
 	}
 	return res.LastInsertId()
+}
+
+// CreateLetter 创建一封信件正文，返回 letter_id。
+func (g *GameDB) CreateLetter(characNo string, sender string, message string) (int64, error) {
+	if strings.TrimSpace(sender) == "" {
+		sender = "DNF Manager"
+	}
+	const q = "INSERT INTO `taiwan_cain_2nd`.`letter` " +
+		"(charac_no, send_charac_no, send_charac_name, letter_text, reg_date, stat) " +
+		"VALUES (?, 0, ?, ?, NOW(), 1)"
+	res, err := g.db.Exec(q, characNo, sender, message)
+	if err != nil {
+		return 0, fmt.Errorf("创建信件失败: %w", err)
+	}
+	return res.LastInsertId()
+}
+
+func (g *GameDB) createUserItem(characNo string, itemID int64, occTime time.Time) (int64, error) {
+	const insertQ = "INSERT INTO `taiwan_cain_2nd`.`user_items` " +
+		"(charac_no, it_id, expire_date, obtain_from, reg_date, stat) " +
+		"VALUES (?, ?, '9999-12-31 23:59:59', 1, ?, 2)"
+	res, err := g.db.Exec(insertQ, characNo, itemID, occTime)
+	if err != nil {
+		return 0, fmt.Errorf("创建时装附件失败: %w", err)
+	}
+	if id, err := res.LastInsertId(); err == nil && id > 0 {
+		return id, nil
+	}
+	var id int64
+	const selectQ = "SELECT ui_id FROM `taiwan_cain_2nd`.`user_items` " +
+		"WHERE charac_no=? AND it_id=? AND reg_date=? ORDER BY ui_id DESC LIMIT 1"
+	if err := g.db.QueryRow(selectQ, characNo, itemID, occTime).Scan(&id); err != nil {
+		return 0, fmt.Errorf("查询时装附件失败: %w", err)
+	}
+	return id, nil
+}
+
+func (g *GameDB) createCreatureItem(characNo string, itemID int64, occTime time.Time) (int64, error) {
+	const insertQ = "INSERT INTO `taiwan_cain_2nd`.`creature_items` " +
+		"(charac_no, it_id, expire_date, reg_date, stat, item_lock_key, creature_type, stomach) " +
+		"VALUES (?, ?, '9999-12-31 23:59:59', ?, 0, 0, 1, 100)"
+	res, err := g.db.Exec(insertQ, characNo, itemID, occTime)
+	if err != nil {
+		return 0, fmt.Errorf("创建宠物附件失败: %w", err)
+	}
+	if id, err := res.LastInsertId(); err == nil && id > 0 {
+		return id, nil
+	}
+	var id int64
+	const selectQ = "SELECT ui_id FROM `taiwan_cain_2nd`.`creature_items` " +
+		"WHERE charac_no=? AND it_id=? AND reg_date=? ORDER BY ui_id DESC LIMIT 1"
+	if err := g.db.QueryRow(selectQ, characNo, itemID, occTime).Scan(&id); err != nil {
+		return 0, fmt.Errorf("查询宠物附件失败: %w", err)
+	}
+	return id, nil
 }
 
 // MailRow 邮件列表中的一行（查询返回）。
@@ -107,10 +194,15 @@ type MailRow struct {
 	SendCharacName  string    `json:"sendCharacName"`
 	ReceiveCharacNo string    `json:"receiveCharacNo"`
 	ItemID          int64     `json:"itemId"`
+	AddInfo         int64     `json:"addInfo"`
 	Count           int       `json:"count"`
 	Upgrade         int       `json:"upgrade"`
 	SeperateUpgrade int       `json:"seperateUpgrade"`
 	Gold            int       `json:"gold"`
+	LetterID        int       `json:"letterId"`
+	Avatar          bool      `json:"avatar"`
+	Creature        bool      `json:"creature"`
+	DeleteFlag      int       `json:"deleteFlag"`
 }
 
 // ListMail 分页查询邮件（对应 PostalServiceImpl.list），按 postal_id 倒序。
@@ -130,6 +222,7 @@ func (g *GameDB) ListMail(receiveCharacNo string, start, end *time.Time, page, p
 		where = append(where, "receive_charac_no = ?")
 		args = append(args, receiveCharacNo)
 	}
+	where = append(where, "delete_flag = 0")
 	if start != nil {
 		where = append(where, "occ_time >= ?")
 		args = append(args, *start)
@@ -139,7 +232,8 @@ func (g *GameDB) ListMail(receiveCharacNo string, start, end *time.Time, page, p
 		args = append(args, *end)
 	}
 	q := "SELECT postal_id, occ_time, send_charac_name, receive_charac_no, item_id, " +
-		"add_info, `upgrade`, seperate_upgrade, gold FROM `taiwan_cain_2nd`.`postal`"
+		"add_info, `upgrade`, seperate_upgrade, gold, letter_id, avata_flag, creature_flag, delete_flag " +
+		"FROM `taiwan_cain_2nd`.`postal`"
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -155,14 +249,74 @@ func (g *GameDB) ListMail(receiveCharacNo string, start, end *time.Time, page, p
 	var out []MailRow
 	for rows.Next() {
 		var r MailRow
+		var avatarFlag, creatureFlag int
+		var addInfo int64
 		if err := rows.Scan(&r.PostalID, &r.OccTime, &r.SendCharacName, &r.ReceiveCharacNo,
-			&r.ItemID, &r.Count, &r.Upgrade, &r.SeperateUpgrade, &r.Gold); err != nil {
+			&r.ItemID, &addInfo, &r.Upgrade, &r.SeperateUpgrade, &r.Gold, &r.LetterID,
+			&avatarFlag, &creatureFlag, &r.DeleteFlag); err != nil {
 			return nil, err
+		}
+		r.AddInfo = addInfo
+		r.Avatar = avatarFlag == 1
+		r.Creature = creatureFlag == 1
+		r.Count = int(addInfo)
+		if r.Avatar || r.Creature {
+			r.Count = 1
 		}
 		r.SendCharacName = TradToSimp(r.SendCharacName)
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// DeleteMail 逻辑删除单封邮件；若是时装/宠物附件，同步删除临时附件记录。
+func (g *GameDB) DeleteMail(postalID int64) error {
+	var avatarFlag, creatureFlag int
+	var addInfo int64
+	err := g.db.QueryRow("SELECT avata_flag, creature_flag, add_info FROM `taiwan_cain_2nd`.`postal` WHERE postal_id = ?", postalID).
+		Scan(&avatarFlag, &creatureFlag, &addInfo)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("邮件不存在: %d", postalID)
+	}
+	if err != nil {
+		return fmt.Errorf("查询邮件失败: %w", err)
+	}
+	if avatarFlag == 1 && addInfo > 0 {
+		_, _ = g.db.Exec("DELETE FROM `taiwan_cain_2nd`.`user_items` WHERE ui_id = ?", addInfo)
+	}
+	if creatureFlag == 1 && addInfo > 0 {
+		_, _ = g.db.Exec("DELETE FROM `taiwan_cain_2nd`.`creature_items` WHERE ui_id = ?", addInfo)
+	}
+	if _, err := g.db.Exec("UPDATE `taiwan_cain_2nd`.`postal` SET delete_flag = 1 WHERE postal_id = ?", postalID); err != nil {
+		return fmt.Errorf("删除邮件失败: %w", err)
+	}
+	return nil
+}
+
+// DeleteMailByCharac 逻辑删除角色全部未删除邮件。
+func (g *GameDB) DeleteMailByCharac(characNo string) error {
+	rows, err := g.db.Query("SELECT postal_id FROM `taiwan_cain_2nd`.`postal` WHERE receive_charac_no = ? AND delete_flag = 0", characNo)
+	if err != nil {
+		return fmt.Errorf("查询角色邮件失败: %w", err)
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := g.DeleteMail(id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // =============================================================================
@@ -175,6 +329,9 @@ type Charac struct {
 	CharacNo    int       `json:"characNo"`
 	CharacName  string    `json:"characName"`
 	Job         int       `json:"job"`
+	GrowType    int       `json:"growType"`
+	DeleteFlag  int       `json:"deleteFlag"`
+	ExpertJob   int       `json:"expertJob"`
 	Lev         int       `json:"lev"`
 	Exp         int       `json:"exp"`
 	HP          int       `json:"hp"`
@@ -191,6 +348,45 @@ type Charac struct {
 	Jump        int       `json:"jump"`
 	Fatigue     int       `json:"fatigue"`
 	CreateTime  time.Time `json:"createTime"`
+}
+
+// AccountResources 汇总账号/角色常用运营资源。
+type AccountResources struct {
+	UID              int64  `json:"uid"`
+	CharacNo         int    `json:"characNo,omitempty"`
+	Cera             int64  `json:"cera"`
+	CeraPoint        int64  `json:"ceraPoint"`
+	AccountMoney     int64  `json:"accountMoney"`
+	CharacMoney      int64  `json:"characMoney,omitempty"`
+	AvatarCoin       int64  `json:"avatarCoin"`
+	SP               int64  `json:"sp"`
+	SP2              int64  `json:"sp2"`
+	TP               int64  `json:"tp"`
+	TP2              int64  `json:"tp2"`
+	QP               int64  `json:"qp"`
+	PayCoin          int64  `json:"payCoin"`
+	PVPGrade         int    `json:"pvpGrade"`
+	PVPWin           int    `json:"pvpWin"`
+	PVPPoint         int    `json:"pvpPoint"`
+	PVPWinPoint      int    `json:"pvpWinPoint"`
+	CreateLimitCount int64  `json:"createLimitCount"`
+	Banned           bool   `json:"banned"`
+	BanEndTime       string `json:"banEndTime,omitempty"`
+	BanReason        string `json:"banReason,omitempty"`
+}
+
+// ResourcePatch 表示一次资源调整。Mode 支持 add/set/clear。
+type ResourcePatch struct {
+	Target string
+	Mode   string
+	Value  int64
+}
+
+type PVPInfo struct {
+	Grade    int `json:"grade"`
+	Win      int `json:"win"`
+	Point    int `json:"point"`
+	WinPoint int `json:"winPoint"`
 }
 
 // CharacQuery 角色查询条件（对应 CharacServiceImpl.list 的参数）。
@@ -321,7 +517,7 @@ func (g *GameDB) UpdateCharac(c Charac) error {
 	return nil
 }
 
-const characSelectCols = "SELECT m_id, charac_no, charac_name, job, lev, exp, HP, maxHP, maxMP, " +
+const characSelectCols = "SELECT m_id, charac_no, charac_name, job, grow_type, delete_flag, expert_job, lev, exp, HP, maxHP, maxMP, " +
 	"phy_attack, phy_defense, mag_attack, mag_defense, attack_speed, cast_speed, move_speed, " +
 	"hit_recovery, jump, fatigue, create_time "
 
@@ -332,11 +528,349 @@ type rowScanner interface {
 
 func scanCharac(s rowScanner) (Charac, error) {
 	var c Charac
-	err := s.Scan(&c.Mid, &c.CharacNo, &c.CharacName, &c.Job, &c.Lev, &c.Exp, &c.HP,
+	err := s.Scan(&c.Mid, &c.CharacNo, &c.CharacName, &c.Job, &c.GrowType, &c.DeleteFlag, &c.ExpertJob, &c.Lev, &c.Exp, &c.HP,
 		&c.MaxHP, &c.MaxMP, &c.PhyAttack, &c.PhyDefense, &c.MagAttack, &c.MagDefense,
 		&c.AttackSpeed, &c.CastSpeed, &c.MoveSpeed, &c.HitRecovery, &c.Jump, &c.Fatigue,
 		&c.CreateTime)
 	return c, err
+}
+
+// RenameCharac 修改角色名。调用方负责传入正确编码/繁简后的名称。
+func (g *GameDB) RenameCharac(characNo int, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("角色名不能为空")
+	}
+	var existing int
+	err := g.db.QueryRow("SELECT charac_no FROM `taiwan_cain`.`charac_info` WHERE charac_name = ? AND charac_no <> ? LIMIT 1", name, characNo).Scan(&existing)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("检查角色名失败: %w", err)
+	}
+	if existing != 0 {
+		return fmt.Errorf("角色名已存在")
+	}
+	if _, err := g.db.Exec("UPDATE `taiwan_cain`.`charac_info` SET charac_name = ? WHERE charac_no = ?", name, characNo); err != nil {
+		return fmt.Errorf("修改角色名失败: %w", err)
+	}
+	return nil
+}
+
+// SetCharacLevel 修改角色等级；若 expTable 提供对应等级经验，同步 charac_stat.exp。
+func (g *GameDB) SetCharacLevel(characNo int, level int, expTable []int64) error {
+	if level < 1 || level > 999 {
+		return fmt.Errorf("等级超出范围")
+	}
+	if _, err := g.db.Exec("UPDATE `taiwan_cain`.`charac_info` SET lev = ? WHERE charac_no = ?", level, characNo); err != nil {
+		return fmt.Errorf("修改等级失败: %w", err)
+	}
+	if exp := expForLevel(level, expTable); exp >= 0 {
+		if _, err := g.db.Exec("UPDATE `taiwan_cain`.`charac_stat` SET exp = ? WHERE charac_no = ?", exp, characNo); err != nil {
+			return fmt.Errorf("同步等级经验失败: %w", err)
+		}
+	}
+	return nil
+}
+
+func expForLevel(level int, expTable []int64) int64 {
+	if len(expTable) == 0 {
+		return -1
+	}
+	idx := level - 1
+	if idx < 0 || idx >= len(expTable) {
+		return -1
+	}
+	return expTable[idx] + 1
+}
+
+// SetCharacJob 修改职业/转职/副职业字段。
+func (g *GameDB) SetCharacJob(characNo int, job *int, growType *int, expertJob *int) error {
+	sets := make([]string, 0, 3)
+	args := make([]interface{}, 0, 4)
+	if job != nil {
+		sets = append(sets, "job = ?")
+		args = append(args, *job)
+	}
+	if growType != nil {
+		sets = append(sets, "grow_type = ?")
+		args = append(args, *growType)
+	}
+	if expertJob != nil {
+		sets = append(sets, "expert_job = ?")
+		args = append(args, *expertJob)
+	}
+	if len(sets) == 0 {
+		return fmt.Errorf("没有可更新的职业字段")
+	}
+	args = append(args, characNo)
+	q := "UPDATE `taiwan_cain`.`charac_info` SET " + strings.Join(sets, ", ") + " WHERE charac_no = ?"
+	if _, err := g.db.Exec(q, args...); err != nil {
+		return fmt.Errorf("修改职业失败: %w", err)
+	}
+	return nil
+}
+
+// SetCharacDeleted 标记删除或恢复角色。
+func (g *GameDB) SetCharacDeleted(characNo int, deleted bool) error {
+	if _, err := g.db.Exec("UPDATE `taiwan_cain`.`charac_info` SET delete_flag = ? WHERE charac_no = ?", boolToInt(deleted), characNo); err != nil {
+		return fmt.Errorf("更新角色删除状态失败: %w", err)
+	}
+	return nil
+}
+
+// MoveCharacToAccount 将角色移动到指定账号 UID。
+func (g *GameDB) MoveCharacToAccount(characNo int, uid int64) error {
+	if uid <= 0 {
+		return fmt.Errorf("账号 UID 无效")
+	}
+	if _, err := g.db.Exec("UPDATE `taiwan_cain`.`charac_info` SET m_id = ? WHERE charac_no = ?", uid, characNo); err != nil {
+		return fmt.Errorf("移动角色失败: %w", err)
+	}
+	return nil
+}
+
+// BanAccount 封禁账号。
+func (g *GameDB) BanAccount(uid int64, days int, reason string) error {
+	if uid <= 0 {
+		return fmt.Errorf("账号 UID 无效")
+	}
+	if days <= 0 {
+		days = 365
+	}
+	now := time.Now()
+	end := now.AddDate(0, 0, days)
+	const q = "REPLACE INTO `d_taiwan`.`member_punish_info` " +
+		"(m_id, punish_type, occ_time, punish_value, apply_flag, start_time, end_time, reason) " +
+		"VALUES (?, 1, ?, 101, 2, ?, ?, ?)"
+	if _, err := g.db.Exec(q, uid, now, now, end, reason); err != nil {
+		return fmt.Errorf("封禁账号失败: %w", err)
+	}
+	return nil
+}
+
+// UnbanAccount 解封账号。
+func (g *GameDB) UnbanAccount(uid int64) error {
+	if _, err := g.db.Exec("DELETE FROM `d_taiwan`.`member_punish_info` WHERE m_id = ?", uid); err != nil {
+		return fmt.Errorf("解封账号失败: %w", err)
+	}
+	return nil
+}
+
+// ResetCreateLimitForAccount 将指定账号的建角限制计数清零。
+func (g *GameDB) ResetCreateLimitForAccount(uid int64) error {
+	res, err := g.db.Exec("UPDATE `d_taiwan`.`limit_create_character` SET count = 0 WHERE m_id = ?", uid)
+	if err != nil {
+		return fmt.Errorf("重置账号创建限制失败: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		_, err = g.db.Exec("INSERT INTO `d_taiwan`.`limit_create_character` (m_id, count) VALUES (?, 0)", uid)
+		if err != nil {
+			return fmt.Errorf("初始化账号创建限制失败: %w", err)
+		}
+	}
+	return nil
+}
+
+// GetAccountResources 汇总账号与可选角色资源。
+func (g *GameDB) GetAccountResources(uid int64, characNo int) (AccountResources, error) {
+	out := AccountResources{UID: uid, CharacNo: characNo}
+	if uid <= 0 && characNo > 0 {
+		c, err := g.GetCharac(characNo)
+		if err != nil {
+			return out, err
+		}
+		if c == nil {
+			return out, fmt.Errorf("角色不存在: %d", characNo)
+		}
+		uid = c.Mid
+		out.UID = uid
+	}
+	if uid <= 0 {
+		return out, fmt.Errorf("账号 UID 或角色 ID 至少提供一个")
+	}
+
+	out.Cera = g.scalarInt64("SELECT cera FROM `taiwan_billing`.`cash_cera` WHERE account = ?", uid)
+	out.CeraPoint = g.scalarInt64("SELECT cera_point FROM `taiwan_billing`.`cash_cera_point` WHERE account = ?", uid)
+	out.AccountMoney = g.scalarInt64("SELECT money FROM `taiwan_cain`.`account_cargo` WHERE m_id = ?", uid)
+	out.AvatarCoin = g.scalarInt64("SELECT avatar_coin FROM `taiwan_cain_2nd`.`member_avatar_coin` WHERE m_id = ?", uid)
+	out.CreateLimitCount = g.scalarInt64("SELECT count FROM `d_taiwan`.`limit_create_character` WHERE m_id = ?", uid)
+	if characNo > 0 {
+		out.CharacMoney = g.scalarInt64("SELECT money FROM `taiwan_cain_2nd`.`inventory` WHERE charac_no = ?", characNo)
+		out.PayCoin = g.scalarInt64("SELECT pay_coin FROM `taiwan_cain_2nd`.`inventory` WHERE charac_no = ?", characNo)
+		out.QP = g.scalarInt64("SELECT qp FROM `taiwan_cain`.`charac_quest_shop` WHERE charac_no = ?", characNo)
+		_ = g.db.QueryRow("SELECT remain_sp, remain_sp_2nd, remain_sfp_1st, remain_sfp_2nd FROM `taiwan_cain_2nd`.`skill` WHERE charac_no = ?", characNo).
+			Scan(&out.SP, &out.SP2, &out.TP, &out.TP2)
+		_ = g.db.QueryRow("SELECT pvp_grade, win, pvp_point, win_point FROM `taiwan_cain`.`pvp_result` WHERE charac_no = ?", characNo).
+			Scan(&out.PVPGrade, &out.PVPWin, &out.PVPPoint, &out.PVPWinPoint)
+	}
+
+	var endTime sql.NullString
+	var reason sql.NullString
+	if err := g.db.QueryRow("SELECT end_time, reason FROM `d_taiwan`.`member_punish_info` WHERE m_id = ? LIMIT 1", uid).
+		Scan(&endTime, &reason); err == nil {
+		out.Banned = true
+		if endTime.Valid {
+			out.BanEndTime = endTime.String
+		}
+		if reason.Valid {
+			out.BanReason = reason.String
+		}
+	}
+	return out, nil
+}
+
+func (g *GameDB) scalarInt64(q string, args ...interface{}) int64 {
+	var v sql.NullInt64
+	if err := g.db.QueryRow(q, args...).Scan(&v); err == nil && v.Valid {
+		return v.Int64
+	}
+	return 0
+}
+
+// ApplyResourcePatch 执行一次资源调整。
+func (g *GameDB) ApplyResourcePatch(uid int64, characNo int, patch ResourcePatch) error {
+	target := strings.TrimSpace(strings.ToLower(patch.Target))
+	mode := strings.TrimSpace(strings.ToLower(patch.Mode))
+	if mode == "" {
+		mode = "add"
+	}
+	if mode != "add" && mode != "set" && mode != "clear" {
+		return fmt.Errorf("资源调整模式无效: %s", patch.Mode)
+	}
+	value := patch.Value
+	if mode == "clear" {
+		mode = "set"
+		value = 0
+	}
+
+	switch target {
+	case "cera":
+		return g.upsertCashCera(uid, value, mode)
+	case "cera_point", "cerapoint":
+		return g.upsertCashCeraPoint(uid, value, mode)
+	case "account_money":
+		return g.updateNumeric("taiwan_cain", "account_cargo", "money", "m_id", uid, value, mode)
+	case "avatar_coin":
+		return g.upsertAvatarCoin(uid, value, mode)
+	case "create_limit":
+		if mode == "add" {
+			return g.updateNumeric("d_taiwan", "limit_create_character", "count", "m_id", uid, value, mode)
+		}
+		return g.setCreateLimit(uid, value)
+	case "charac_money":
+		return g.updateNumeric("taiwan_cain_2nd", "inventory", "money", "charac_no", int64(characNo), value, mode)
+	case "pay_coin":
+		return g.updateNumeric("taiwan_cain_2nd", "inventory", "pay_coin", "charac_no", int64(characNo), value, mode)
+	case "qp":
+		return g.updateNumeric("taiwan_cain", "charac_quest_shop", "qp", "charac_no", int64(characNo), value, mode)
+	case "sp":
+		return g.updatePairedSkill(characNo, "remain_sp", "remain_sp_2nd", value, mode)
+	case "tp":
+		return g.updatePairedSkill(characNo, "remain_sfp_1st", "remain_sfp_2nd", value, mode)
+	default:
+		return fmt.Errorf("未知资源类型: %s", patch.Target)
+	}
+}
+
+func (g *GameDB) upsertCashCera(uid int64, value int64, mode string) error {
+	if mode == "add" {
+		const q = "INSERT INTO `taiwan_billing`.`cash_cera` (account, cera, mod_date, reg_date) VALUES (?, ?, NOW(), NOW()) " +
+			"ON DUPLICATE KEY UPDATE cera = cera + VALUES(cera), mod_date = NOW()"
+		_, err := g.db.Exec(q, uid, value)
+		return wrapExecErr("调整D币失败", err)
+	}
+	const q = "INSERT INTO `taiwan_billing`.`cash_cera` (account, cera, mod_date, reg_date) VALUES (?, ?, NOW(), NOW()) " +
+		"ON DUPLICATE KEY UPDATE cera = VALUES(cera), mod_date = NOW()"
+	_, err := g.db.Exec(q, uid, value)
+	return wrapExecErr("设置D币失败", err)
+}
+
+func (g *GameDB) upsertCashCeraPoint(uid int64, value int64, mode string) error {
+	if mode == "add" {
+		const q = "INSERT INTO `taiwan_billing`.`cash_cera_point` (account, cera_point, mod_date, reg_date) VALUES (?, ?, NOW(), NOW()) " +
+			"ON DUPLICATE KEY UPDATE cera_point = cera_point + VALUES(cera_point), mod_date = NOW()"
+		_, err := g.db.Exec(q, uid, value)
+		return wrapExecErr("调整D点失败", err)
+	}
+	const q = "INSERT INTO `taiwan_billing`.`cash_cera_point` (account, cera_point, mod_date, reg_date) VALUES (?, ?, NOW(), NOW()) " +
+		"ON DUPLICATE KEY UPDATE cera_point = VALUES(cera_point), mod_date = NOW()"
+	_, err := g.db.Exec(q, uid, value)
+	return wrapExecErr("设置D点失败", err)
+}
+
+func (g *GameDB) upsertAvatarCoin(uid int64, value int64, mode string) error {
+	if mode == "add" {
+		const q = "INSERT INTO `taiwan_cain_2nd`.`member_avatar_coin` (m_id, avatar_coin) VALUES (?, ?) " +
+			"ON DUPLICATE KEY UPDATE avatar_coin = avatar_coin + VALUES(avatar_coin)"
+		_, err := g.db.Exec(q, uid, value)
+		return wrapExecErr("调整时装硬币失败", err)
+	}
+	const q = "INSERT INTO `taiwan_cain_2nd`.`member_avatar_coin` (m_id, avatar_coin) VALUES (?, ?) " +
+		"ON DUPLICATE KEY UPDATE avatar_coin = VALUES(avatar_coin)"
+	_, err := g.db.Exec(q, uid, value)
+	return wrapExecErr("设置时装硬币失败", err)
+}
+
+func (g *GameDB) setCreateLimit(uid int64, value int64) error {
+	const q = "INSERT INTO `d_taiwan`.`limit_create_character` (m_id, count) VALUES (?, ?) " +
+		"ON DUPLICATE KEY UPDATE count = VALUES(count)"
+	_, err := g.db.Exec(q, uid, value)
+	return wrapExecErr("设置建角限制失败", err)
+}
+
+func (g *GameDB) updateNumeric(dbName, table, column, key string, keyValue int64, value int64, mode string) error {
+	if keyValue <= 0 {
+		return fmt.Errorf("%s.%s 需要有效定位 ID", table, column)
+	}
+	op := column + " = ?"
+	args := []interface{}{value, keyValue}
+	if mode == "add" {
+		op = column + " = " + column + " + ?"
+	}
+	q := fmt.Sprintf("UPDATE `%s`.`%s` SET %s WHERE %s = ?", dbName, table, op, key)
+	res, err := g.db.Exec(q, args...)
+	if err != nil {
+		return fmt.Errorf("更新%s.%s失败: %w", table, column, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("更新%s.%s失败: 未找到记录", table, column)
+	}
+	return nil
+}
+
+func (g *GameDB) updatePairedSkill(characNo int, col1, col2 string, value int64, mode string) error {
+	if characNo <= 0 {
+		return fmt.Errorf("角色 ID 无效")
+	}
+	setClause := fmt.Sprintf("%s = ?, %s = ?", col1, col2)
+	args := []interface{}{value, value, characNo}
+	if mode == "add" {
+		setClause = fmt.Sprintf("%s = %s + ?, %s = %s + ?", col1, col1, col2, col2)
+	}
+	q := fmt.Sprintf("UPDATE `taiwan_cain_2nd`.`skill` SET %s WHERE charac_no = ?", setClause)
+	res, err := g.db.Exec(q, args...)
+	if err != nil {
+		return fmt.Errorf("更新技能点失败: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("更新技能点失败: 未找到角色技能记录")
+	}
+	return nil
+}
+
+// SetPVP 修改 PVP 数据。
+func (g *GameDB) SetPVP(characNo int, info PVPInfo) error {
+	if characNo <= 0 {
+		return fmt.Errorf("角色 ID 无效")
+	}
+	res, err := g.db.Exec("UPDATE `taiwan_cain`.`pvp_result` SET pvp_grade=?, win=?, pvp_point=?, win_point=? WHERE charac_no=?",
+		info.Grade, info.Win, info.Point, info.WinPoint, characNo)
+	if err != nil {
+		return fmt.Errorf("修改 PVP 数据失败: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("修改 PVP 数据失败: 未找到记录")
+	}
+	return nil
 }
 
 // =============================================================================
@@ -382,4 +916,11 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func wrapExecErr(message string, err error) error {
+	if err != nil {
+		return fmt.Errorf("%s: %w", message, err)
+	}
+	return nil
 }

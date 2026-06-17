@@ -18,6 +18,7 @@
       </div>
       <nav class="nav" aria-label="主导航">
         <button class="nav-btn active" data-view="characters">角色管理</button>
+        <button class="nav-btn" data-view="operations">运营管理</button>
         <button class="nav-btn" data-view="mail">邮件发货</button>
         <button class="nav-btn" data-view="items">物品库</button>
         <button class="nav-btn" data-view="system">系统状态</button>
@@ -161,9 +162,25 @@
                   <span>信件 ID</span>
                   <input name="letterId" type="number" inputmode="numeric" min="0" value="0">
                 </label>
+                <label class="field">
+                  <span>耐久</span>
+                  <input name="endurance" type="number" inputmode="numeric" min="0" value="0">
+                </label>
+                <label class="field">
+                  <span>附件类型</span>
+                  <select name="attachmentType">
+                    <option value="normal">普通</option>
+                    <option value="avatar">时装</option>
+                    <option value="creature">宠物</option>
+                  </select>
+                </label>
                 <label class="check-field span-2">
                   <input name="seal" type="checkbox">
                   <span>封装物品</span>
+                </label>
+                <label class="field span-4">
+                  <span>信件正文</span>
+                  <textarea name="message" rows="3" placeholder="填写后自动创建信件"></textarea>
                 </label>
                 <div class="form-actions span-2">
                   <button class="btn primary" type="submit">发送</button>
@@ -210,10 +227,12 @@
                       <th>物品</th>
                       <th>数量</th>
                       <th>金币</th>
+                      <th>类型</th>
+                      <th class="actions-col">操作</th>
                     </tr>
                   </thead>
                   <tbody id="mail-body">
-                    <tr><td colspan="7" class="empty">等待查询</td></tr>
+                    <tr><td colspan="9" class="empty">等待查询</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -222,6 +241,156 @@
                 <span id="mail-page">第 1 页</span>
                 <button class="btn secondary" id="mail-next">下一页</button>
               </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-operations">
+          <div class="section-head">
+            <div>
+              <h2>运营管理</h2>
+              <p>查询账号资源，调整点券、金币、SP/TP/QP，并执行角色高级操作。</p>
+            </div>
+            <button class="btn secondary" id="refresh-operations">刷新</button>
+          </div>
+
+          <div class="ops-grid">
+            <section class="panel">
+              <h3>账号资源</h3>
+              <form class="form-grid ops-query-form" id="resource-query-form">
+                <label class="field">
+                  <span>账号 UID</span>
+                  <input name="uid" type="number" inputmode="numeric" placeholder="m_id">
+                </label>
+                <label class="field">
+                  <span>角色 ID</span>
+                  <input name="characNo" type="number" inputmode="numeric" placeholder="charac_no">
+                </label>
+                <div class="form-actions span-2">
+                  <button class="btn primary" type="submit">查询资源</button>
+                </div>
+              </form>
+              <div class="resource-grid" id="resource-summary">
+                <div class="muted-panel">输入账号 UID 或角色 ID 后查询。</div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h3>充值与资源调整</h3>
+              <form class="form-grid ops-patch-form" id="resource-patch-form">
+                <label class="field">
+                  <span>资源</span>
+                  <select name="target">
+                    <option value="cera">D币 / 点券</option>
+                    <option value="cera_point">D点 / 代币</option>
+                    <option value="account_money">账号金库金币</option>
+                    <option value="charac_money">角色金币</option>
+                    <option value="avatar_coin">时装硬币</option>
+                    <option value="sp">SP</option>
+                    <option value="tp">TP</option>
+                    <option value="qp">QP</option>
+                    <option value="pay_coin">复活币/pay_coin</option>
+                    <option value="create_limit">建角限制计数</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>方式</span>
+                  <select name="mode">
+                    <option value="add">增加/扣除</option>
+                    <option value="set">设为</option>
+                    <option value="clear">清零</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>数值</span>
+                  <input name="value" type="number" inputmode="numeric" value="0">
+                </label>
+                <div class="form-actions">
+                  <button class="btn primary" type="submit">提交调整</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <h3>角色高级操作</h3>
+              <form class="form-grid advanced-form" id="advanced-character-form">
+                <label class="field">
+                  <span>角色 ID</span>
+                  <input name="characNo" type="number" inputmode="numeric" required placeholder="charac_no">
+                </label>
+                <label class="field">
+                  <span>新角色名</span>
+                  <input name="name" type="text" placeholder="改名">
+                </label>
+                <label class="field">
+                  <span>等级</span>
+                  <input name="level" type="number" inputmode="numeric" min="1" placeholder="升级/降级">
+                </label>
+                <label class="field">
+                  <span>职业 job</span>
+                  <input name="job" type="number" inputmode="numeric" placeholder="可空">
+                </label>
+                <label class="field">
+                  <span>转职 grow_type</span>
+                  <input name="growType" type="number" inputmode="numeric" placeholder="可空">
+                </label>
+                <label class="field">
+                  <span>副职业 expert_job</span>
+                  <input name="expertJob" type="number" inputmode="numeric" placeholder="可空">
+                </label>
+                <label class="field">
+                  <span>移动到账号 UID</span>
+                  <input name="moveUid" type="number" inputmode="numeric" placeholder="目标 m_id">
+                </label>
+                <label class="field">
+                  <span>封号天数</span>
+                  <input name="banDays" type="number" inputmode="numeric" value="365">
+                </label>
+                <label class="field span-2">
+                  <span>封号原因</span>
+                  <input name="banReason" type="text" placeholder="可空">
+                </label>
+                <div class="form-actions span-2 advanced-actions">
+                  <button class="btn secondary" type="button" data-advanced-action="rename">改名</button>
+                  <button class="btn secondary" type="button" data-advanced-action="level">改等级</button>
+                  <button class="btn secondary" type="button" data-advanced-action="job">改职业</button>
+                  <button class="btn secondary" type="button" data-advanced-action="move">移动角色</button>
+                  <button class="btn danger" type="button" data-advanced-action="delete">删除</button>
+                  <button class="btn secondary" type="button" data-advanced-action="recover">恢复</button>
+                  <button class="btn danger" type="button" data-advanced-action="ban">封号</button>
+                  <button class="btn secondary" type="button" data-advanced-action="unban">解封</button>
+                  <button class="btn secondary" type="button" data-advanced-action="reset-create-limit">重置建角限制</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <h3>PVP 数据</h3>
+              <form class="form-grid pvp-form" id="pvp-form">
+                <label class="field">
+                  <span>角色 ID</span>
+                  <input name="characNo" type="number" inputmode="numeric" required placeholder="charac_no">
+                </label>
+                <label class="field">
+                  <span>段位</span>
+                  <input name="grade" type="number" inputmode="numeric" value="0">
+                </label>
+                <label class="field">
+                  <span>胜场</span>
+                  <input name="win" type="number" inputmode="numeric" value="0">
+                </label>
+                <label class="field">
+                  <span>胜点</span>
+                  <input name="point" type="number" inputmode="numeric" value="0">
+                </label>
+                <label class="field">
+                  <span>累计胜点</span>
+                  <input name="winPoint" type="number" inputmode="numeric" value="0">
+                </label>
+                <div class="form-actions">
+                  <button class="btn primary" type="submit">保存 PVP</button>
+                </div>
+              </form>
             </section>
           </div>
         </section>

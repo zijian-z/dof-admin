@@ -4,6 +4,7 @@ const state = {
   characters: { page: 1, pageSize: 20, total: 0, items: [] },
   mail: { page: 1, pageSize: 20, hasMore: false, items: [] },
   items: { page: 1, pageSize: 40, total: 0, items: [], facetsLoaded: false },
+  resources: null,
   selectedCharacter: null
 };
 
@@ -11,6 +12,10 @@ const viewMeta = {
   characters: {
     title: "角色管理",
     subtitle: "查询角色、编辑常用属性，并快速跳转发货。"
+  },
+  operations: {
+    title: "运营管理",
+    subtitle: "查询账号资源，调整点券、金币、SP/TP/QP，并执行角色高级操作。"
   },
   mail: {
     title: "邮件发货",
@@ -111,6 +116,7 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 document.addEventListener("DOMContentLoaded", () => {
   bindNavigation();
   bindCharacters();
+  bindOperations();
   bindMail();
   bindItems();
   bindDrawers();
@@ -157,6 +163,12 @@ function bindCharacters() {
     if (button.dataset.action === "edit") {
       openCharacterDrawer(row);
     }
+    if (button.dataset.action === "resources") {
+      fillOperations(row);
+    }
+    if (button.dataset.action === "advanced") {
+      fillAdvancedCharacter(row);
+    }
     if (button.dataset.action === "mail") {
       $("#mail-form [name='receiveCharacNo']").value = String(row.characNo);
       setView("mail");
@@ -166,6 +178,17 @@ function bindCharacters() {
   $("#character-form").addEventListener("submit", saveCharacter);
 }
 
+function bindOperations() {
+  $("#resource-query-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    loadResources();
+  });
+  $("#resource-patch-form").addEventListener("submit", patchResource);
+  $("#refresh-operations").addEventListener("click", loadResources);
+  $("#advanced-character-form").addEventListener("click", handleAdvancedAction);
+  $("#pvp-form").addEventListener("submit", savePVP);
+}
+
 function bindMail() {
   $("#mail-form").addEventListener("submit", sendMail);
   $("#clear-mail-form").addEventListener("click", () => {
@@ -173,6 +196,8 @@ function bindMail() {
     $("#mail-form [name='count']").value = "1";
     $("#mail-form [name='gold']").value = "0";
     $("#mail-form [name='letterId']").value = "0";
+    $("#mail-form [name='endurance']").value = "0";
+    $("#mail-form [name='attachmentType']").value = "normal";
   });
   $("#mail-filter").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -190,6 +215,11 @@ function bindMail() {
       state.mail.page += 1;
       loadMail();
     }
+  });
+  $("#mail-body").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action='delete-mail']");
+    if (!button) return;
+    deleteMail(button.dataset.id);
   });
   $("#reset-create-limit").addEventListener("click", resetCreateLimit);
 }
@@ -253,6 +283,7 @@ function setView(view) {
   $("#view-subtitle").textContent = viewMeta[view].subtitle;
 
   if (view === "characters" && state.characters.items.length === 0) loadCharacters();
+  if (view === "operations" && !state.resources) loadResources();
   if (view === "mail" && state.mail.items.length === 0) loadMail();
   if (view === "items" && state.items.items.length === 0) loadItems();
   if (view === "system") refreshHealth();
@@ -388,7 +419,9 @@ function renderCharacters() {
         <td>
           <div class="row-actions">
             <button class="btn small" data-action="edit" data-id="${item.characNo}">编辑</button>
+            <button class="btn small secondary" data-action="resources" data-id="${item.characNo}">资源</button>
             <button class="btn small secondary" data-action="mail" data-id="${item.characNo}">发货</button>
+            <button class="btn small secondary" data-action="advanced" data-id="${item.characNo}">高级</button>
           </div>
         </td>
       </tr>
@@ -398,6 +431,187 @@ function renderCharacters() {
   $("#characters-page").textContent = `第 ${state.characters.page} / ${maxPage} 页 · 共 ${state.characters.total} 条`;
   $("#characters-prev").disabled = state.characters.page <= 1;
   $("#characters-next").disabled = state.characters.page >= maxPage;
+}
+
+function fillOperations(character) {
+  $("#resource-query-form [name='uid']").value = String(character.mid);
+  $("#resource-query-form [name='characNo']").value = String(character.characNo);
+  $("#advanced-character-form [name='characNo']").value = String(character.characNo);
+  $("#pvp-form [name='characNo']").value = String(character.characNo);
+  setView("operations");
+  loadResources();
+}
+
+function fillAdvancedCharacter(character) {
+  const form = $("#advanced-character-form");
+  form.elements.characNo.value = String(character.characNo);
+  form.elements.name.value = character.characName || "";
+  form.elements.level.value = character.lev ?? "";
+  form.elements.job.value = character.job ?? "";
+  form.elements.growType.value = character.growType ?? "";
+  form.elements.expertJob.value = character.expertJob ?? "";
+  $("#resource-query-form [name='uid']").value = String(character.mid);
+  $("#resource-query-form [name='characNo']").value = String(character.characNo);
+  $("#pvp-form [name='characNo']").value = String(character.characNo);
+  setView("operations");
+  loadResources();
+}
+
+async function loadResources() {
+  const form = $("#resource-query-form");
+  const params = formParams(form);
+  const summary = $("#resource-summary");
+  if (!params.has("uid") && !params.has("characNo")) {
+    summary.innerHTML = `<div class="muted-panel">输入账号 UID 或角色 ID 后查询。</div>`;
+    return;
+  }
+  summary.innerHTML = `<div class="muted-panel">资源加载中</div>`;
+  try {
+    const data = await api(`/api/resources?${params.toString()}`);
+    state.resources = data;
+    if (data.uid) {
+      form.elements.uid.value = String(data.uid);
+    }
+    if (data.characNo) {
+      form.elements.characNo.value = String(data.characNo);
+      $("#advanced-character-form [name='characNo']").value = String(data.characNo);
+      $("#pvp-form [name='characNo']").value = String(data.characNo);
+    }
+    renderResources(data);
+  } catch (error) {
+    summary.innerHTML = `<div class="muted-panel">${escapeHTML(error.message)}</div>`;
+    showToast(error.message, "err");
+  }
+}
+
+function renderResources(data) {
+  const rows = [
+    ["账号 UID", data.uid],
+    ["角色 ID", data.characNo || "-"],
+    ["D币 / 点券", data.cera],
+    ["D点 / 代币", data.ceraPoint],
+    ["账号金库金币", data.accountMoney],
+    ["角色金币", data.characMoney],
+    ["时装硬币", data.avatarCoin],
+    ["SP", `${data.sp} / ${data.sp2}`],
+    ["TP", `${data.tp} / ${data.tp2}`],
+    ["QP", data.qp],
+    ["pay_coin", data.payCoin],
+    ["建角限制", data.createLimitCount],
+    ["封禁", data.banned ? `是${data.banEndTime ? ` 至 ${formatDate(data.banEndTime)}` : ""}` : "否"],
+    ["封禁原因", data.banReason || "-"],
+    ["PVP", `段位 ${data.pvpGrade} · 胜场 ${data.pvpWin} · 胜点 ${data.pvpPoint}`]
+  ];
+  $("#resource-summary").innerHTML = rows.map(([label, value]) => `
+    <div class="fact">
+      <span>${escapeHTML(label)}</span>
+      <strong>${escapeHTML(formatValue(value))}</strong>
+    </div>
+  `).join("");
+  const pvp = $("#pvp-form");
+  pvp.elements.grade.value = data.pvpGrade ?? 0;
+  pvp.elements.win.value = data.pvpWin ?? 0;
+  pvp.elements.point.value = data.pvpPoint ?? 0;
+  pvp.elements.winPoint.value = data.pvpWinPoint ?? 0;
+}
+
+async function patchResource(event) {
+  event.preventDefault();
+  const query = $("#resource-query-form");
+  const form = event.currentTarget;
+  const payload = {
+    uid: numberOrZero(query.elements.uid.value),
+    characNo: numberOrZero(query.elements.characNo.value),
+    target: form.elements.target.value,
+    mode: form.elements.mode.value,
+    value: numberOrZero(form.elements.value.value)
+  };
+  try {
+    const data = await api("/api/resources", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    state.resources = data;
+    renderResources(data);
+    showToast("资源已调整", "ok");
+  } catch (error) {
+    showToast(error.message, "err");
+  }
+}
+
+async function handleAdvancedAction(event) {
+  const button = event.target.closest("button[data-advanced-action]");
+  if (!button) return;
+  const action = button.dataset.advancedAction;
+  const form = $("#advanced-character-form");
+  const characNo = numberOrZero(form.elements.characNo.value);
+  if (!characNo) {
+    showToast("角色 ID 不能为空", "err");
+    return;
+  }
+  let payload = {};
+  if (action === "rename") {
+    payload = { name: form.elements.name.value.trim() };
+    if (!payload.name) return showToast("新角色名不能为空", "err");
+  }
+  if (action === "level") {
+    payload = { level: numberOrZero(form.elements.level.value) };
+    if (!payload.level) return showToast("等级不能为空", "err");
+  }
+  if (action === "job") {
+    payload = {};
+    ["job", "growType", "expertJob"].forEach((key) => {
+      const raw = form.elements[key].value.trim();
+      if (raw !== "") payload[key] = numberOrZero(raw);
+    });
+    if (Object.keys(payload).length === 0) return showToast("至少填写一个职业字段", "err");
+  }
+  if (action === "move") {
+    payload = { uid: numberOrZero(form.elements.moveUid.value) };
+    if (!payload.uid) return showToast("目标账号 UID 不能为空", "err");
+  }
+  if (action === "ban") {
+    payload = {
+      days: numberOrZero(form.elements.banDays.value) || 365,
+      reason: form.elements.banReason.value.trim()
+    };
+  }
+  const confirmActions = new Set(["delete", "recover", "move", "ban", "unban", "reset-create-limit"]);
+  if (confirmActions.has(action) && !confirm(`确定执行 ${button.textContent.trim()} 吗？`)) return;
+  try {
+    await api(`/api/characters/${characNo}/${action}`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    showToast("角色操作已完成", "ok");
+    loadCharacters();
+    loadResources();
+  } catch (error) {
+    showToast(error.message, "err");
+  }
+}
+
+async function savePVP(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const characNo = numberOrZero(form.elements.characNo.value);
+  if (!characNo) return showToast("角色 ID 不能为空", "err");
+  const payload = {
+    grade: numberOrZero(form.elements.grade.value),
+    win: numberOrZero(form.elements.win.value),
+    point: numberOrZero(form.elements.point.value),
+    winPoint: numberOrZero(form.elements.winPoint.value)
+  };
+  try {
+    await api(`/api/characters/${characNo}/pvp`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    showToast("PVP 数据已保存", "ok");
+    loadResources();
+  } catch (error) {
+    showToast(error.message, "err");
+  }
 }
 
 function openCharacterDrawer(character) {
@@ -448,6 +662,7 @@ async function saveCharacter(event) {
 async function sendMail(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  const attachmentType = form.elements.attachmentType.value;
   const payload = {
     receiveCharacNo: form.elements.receiveCharacNo.value.trim(),
     sendCharacName: form.elements.sendCharacName.value.trim(),
@@ -459,7 +674,11 @@ async function sendMail(event) {
     amplifyValue: numberOrZero(form.elements.amplifyValue.value),
     gold: numberOrZero(form.elements.gold.value),
     letterId: numberOrZero(form.elements.letterId.value),
-    seal: form.elements.seal.checked
+    endurance: numberOrZero(form.elements.endurance.value),
+    message: form.elements.message.value.trim(),
+    seal: form.elements.seal.checked,
+    avatar: attachmentType === "avatar",
+    creature: attachmentType === "creature"
   };
   try {
     const result = await api("/api/mail", {
@@ -475,7 +694,7 @@ async function sendMail(event) {
 
 async function loadMail() {
   const body = $("#mail-body");
-  body.innerHTML = `<tr><td colspan="7" class="empty">加载中</td></tr>`;
+  body.innerHTML = `<tr><td colspan="9" class="empty">加载中</td></tr>`;
   try {
     const params = formParams($("#mail-filter"));
     params.set("page", String(state.mail.page));
@@ -489,14 +708,14 @@ async function loadMail() {
     renderMail();
     refreshHealth();
   } catch (error) {
-    body.innerHTML = `<tr><td colspan="7" class="empty">${escapeHTML(error.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty">${escapeHTML(error.message)}</td></tr>`;
   }
 }
 
 function renderMail() {
   const body = $("#mail-body");
   if (state.mail.items.length === 0) {
-    body.innerHTML = `<tr><td colspan="7" class="empty">没有邮件记录</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty">没有邮件记录</td></tr>`;
   } else {
     body.innerHTML = state.mail.items.map((item) => `
       <tr>
@@ -505,14 +724,41 @@ function renderMail() {
         <td title="${escapeHTML(item.sendCharacName)}">${escapeHTML(item.sendCharacName)}</td>
         <td>${escapeHTML(item.receiveCharacNo)}</td>
         <td>${item.itemId}${item.upgrade ? ` +${item.upgrade}` : ""}${item.seperateUpgrade ? ` / 锻${item.seperateUpgrade}` : ""}</td>
-        <td>${item.count}</td>
+        <td>${mailCountText(item)}</td>
         <td>${item.gold}</td>
+        <td>${mailTypeName(item)}</td>
+        <td><button class="btn small danger" data-action="delete-mail" data-id="${item.postalId}">删除</button></td>
       </tr>
     `).join("");
   }
   $("#mail-page").textContent = `第 ${state.mail.page} 页`;
   $("#mail-prev").disabled = state.mail.page <= 1;
   $("#mail-next").disabled = !state.mail.hasMore;
+}
+
+function mailTypeName(item) {
+  if (item.avatar) return "时装";
+  if (item.creature) return "宠物";
+  if (item.letterId && !item.itemId) return "信件";
+  return "普通";
+}
+
+function mailCountText(item) {
+  if (item.avatar || item.creature) {
+    return `附件 ${item.addInfo || "-"}`;
+  }
+  return item.count;
+}
+
+async function deleteMail(id) {
+  if (!confirm(`确定删除邮件 ${id} 吗？`)) return;
+  try {
+    await api(`/api/mail/${encodeURIComponent(id)}`, { method: "DELETE" });
+    showToast("邮件已删除", "ok");
+    loadMail();
+  } catch (error) {
+    showToast(error.message, "err");
+  }
 }
 
 async function resetCreateLimit() {

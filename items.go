@@ -173,8 +173,10 @@ func rarityName(r int) string {
 	case 4:
 		return "史诗"
 	case 5:
-		return "传说"
+		return "勇者"
 	case 6:
+		return "传说"
+	case 7:
 		return "神话"
 	default:
 		return "未知"
@@ -609,6 +611,22 @@ func (p *Pvf) GetStackableList() []*Stackable {
 		list = append(list, sk)
 	}
 	return list
+}
+
+// GetExpTable 读取 character/exptable.tbl 中的等级经验表。
+func (p *Pvf) GetExpTable() []int64 {
+	content := p.getTreeContent("character/exptable.tbl")
+	if content == nil {
+		return nil
+	}
+	units := parseUnits(p, "character/exptable.tbl", content, false)
+	out := make([]int64, 0, len(units))
+	for _, unit := range units {
+		if v, ok := toInt(unit.value); ok {
+			out = append(out, int64(v))
+		}
+	}
+	return out
 }
 
 func atoiSafe(s string) (int, bool) {
