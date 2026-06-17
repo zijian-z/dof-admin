@@ -41,7 +41,7 @@
           <div class="section-head">
             <div>
               <h2>角色列表</h2>
-              <p>支持按角色名、账号 UID、职业和等级范围筛选。</p>
+              <p>支持按角色名、账号名、账号 UID、职业和等级范围筛选。</p>
             </div>
             <button class="btn secondary" id="refresh-characters">刷新</button>
           </div>
@@ -50,6 +50,10 @@
             <label class="field">
               <span>角色名</span>
               <input name="name" type="search" placeholder="输入角色名">
+            </label>
+            <label class="field">
+              <span>账号名</span>
+              <input name="account" type="search" placeholder="accountname">
             </label>
             <label class="field">
               <span>账号 UID</span>
@@ -86,7 +90,7 @@
               <thead>
                 <tr>
                   <th>角色</th>
-                  <th>账号 UID</th>
+                  <th>账号</th>
                   <th>职业</th>
                   <th>等级</th>
                   <th>HP / MP</th>
@@ -115,7 +119,6 @@
               <h2>邮件发货</h2>
               <p>发送物品、金币或信件，并查看最近邮件记录。</p>
             </div>
-            <button class="btn danger" id="reset-create-limit">重置创建限制</button>
           </div>
 
           <div class="mail-layout">
@@ -259,12 +262,20 @@
               <h3>账号资源</h3>
               <form class="form-grid ops-query-form" id="resource-query-form">
                 <label class="field">
+                  <span>账号名</span>
+                  <input name="account" type="search" placeholder="accountname">
+                </label>
+                <label class="field">
+                  <span>角色名</span>
+                  <input name="characName" type="search" placeholder="charac_name">
+                </label>
+                <label class="field">
                   <span>账号 UID</span>
-                  <input name="uid" type="number" inputmode="numeric" placeholder="m_id">
+                  <input name="uid" type="number" inputmode="numeric" placeholder="可选 m_id">
                 </label>
                 <label class="field">
                   <span>角色 ID</span>
-                  <input name="characNo" type="number" inputmode="numeric" placeholder="charac_no">
+                  <input name="characNo" type="number" inputmode="numeric" placeholder="可选 charac_no">
                 </label>
                 <div class="form-actions span-2">
                   <button class="btn primary" type="submit">查询资源</button>
@@ -281,16 +292,16 @@
                 <label class="field">
                   <span>资源</span>
                   <select name="target">
-                    <option value="cera">D币 / 点券</option>
-                    <option value="cera_point">D点 / 代币</option>
-                    <option value="account_money">账号金库金币</option>
-                    <option value="charac_money">角色金币</option>
-                    <option value="avatar_coin">时装硬币</option>
-                    <option value="sp">SP</option>
-                    <option value="tp">TP</option>
-                    <option value="qp">QP</option>
-                    <option value="pay_coin">复活币/pay_coin</option>
-                    <option value="create_limit">建角限制计数</option>
+                    <option value="cera">点券 D币 - cash_cera.cera</option>
+                    <option value="cera_point">代币 D点 - cash_cera_point.cera_point</option>
+                    <option value="account_money">账号金库金币 - account_cargo.money</option>
+                    <option value="charac_money">角色背包金币 - inventory.money</option>
+                    <option value="avatar_coin">时装硬币 - member_avatar_coin.avatar_coin</option>
+                    <option value="sp">技能 SP - skill.remain_sp / remain_sp_2nd</option>
+                    <option value="tp">技能 TP - skill.remain_sfp_1st / remain_sfp_2nd</option>
+                    <option value="qp">QP - charac_quest_shop.qp</option>
+                    <option value="pay_coin">复活币 pay_coin - inventory.pay_coin</option>
+                    <option value="create_limit">建角限制计数 - limit_create_character.count</option>
                   </select>
                 </label>
                 <label class="field">
@@ -327,16 +338,16 @@
                   <input name="level" type="number" inputmode="numeric" min="1" placeholder="升级/降级">
                 </label>
                 <label class="field">
-                  <span>职业 job</span>
-                  <input name="job" type="number" inputmode="numeric" placeholder="可空">
+                  <span>基础职业 job</span>
+                  <input name="job" type="number" inputmode="numeric" list="job-options" placeholder="可空">
                 </label>
                 <label class="field">
                   <span>转职 grow_type</span>
-                  <input name="growType" type="number" inputmode="numeric" placeholder="可空">
+                  <input name="growType" type="number" inputmode="numeric" list="grow-type-options" placeholder="可空">
                 </label>
                 <label class="field">
                   <span>副职业 expert_job</span>
-                  <input name="expertJob" type="number" inputmode="numeric" placeholder="可空">
+                  <input name="expertJob" type="number" inputmode="numeric" list="expert-job-options" placeholder="可空">
                 </label>
                 <label class="field">
                   <span>移动到账号 UID</span>
@@ -362,6 +373,32 @@
                   <button class="btn secondary" type="button" data-advanced-action="reset-create-limit">重置建角限制</button>
                 </div>
               </form>
+              <datalist id="job-options">
+                <option value="0" label="鬼剑士"></option>
+                <option value="1" label="格斗家(女)"></option>
+                <option value="2" label="神枪手(男)"></option>
+                <option value="3" label="魔法师(女)"></option>
+                <option value="4" label="圣职者"></option>
+                <option value="5" label="盗贼"></option>
+                <option value="6" label="神枪手(女)"></option>
+                <option value="7" label="格斗家(男)"></option>
+                <option value="8" label="魔法师(男)"></option>
+                <option value="9" label="暗夜/外传"></option>
+              </datalist>
+              <datalist id="grow-type-options">
+                <option value="0" label="未转职"></option>
+                <option value="1" label="一转分支 1"></option>
+                <option value="2" label="一转分支 2"></option>
+                <option value="3" label="一转分支 3"></option>
+                <option value="4" label="一转分支 4"></option>
+              </datalist>
+              <datalist id="expert-job-options">
+                <option value="0" label="无副职业"></option>
+                <option value="1" label="炼金术师"></option>
+                <option value="2" label="分解师"></option>
+                <option value="3" label="附魔师"></option>
+                <option value="4" label="控偶师"></option>
+              </datalist>
             </section>
 
             <section class="panel">
@@ -470,6 +507,14 @@
               <button class="btn ghost" type="button" id="reset-item-filter">重置</button>
             </div>
           </form>
+
+          <section class="panel item-browser">
+            <div class="browser-head">
+              <strong>分类浏览</strong>
+              <span id="item-browser-current" class="subtle">全部分类</span>
+            </div>
+            <div class="category-groups" id="item-category-browser"></div>
+          </section>
 
           <div class="table-wrap">
             <table class="data-table item-table">

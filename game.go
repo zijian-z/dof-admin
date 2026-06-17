@@ -326,6 +326,7 @@ func (g *GameDB) DeleteMailByCharac(characNo string) error {
 // Charac 角色信息（对应 entity.CharacInfo）。
 type Charac struct {
 	Mid         int64     `json:"mid"`
+	AccountName string    `json:"accountName,omitempty"`
 	CharacNo    int       `json:"characNo"`
 	CharacName  string    `json:"characName"`
 	Job         int       `json:"job"`
@@ -353,7 +354,9 @@ type Charac struct {
 // AccountResources 汇总账号/角色常用运营资源。
 type AccountResources struct {
 	UID              int64  `json:"uid"`
+	AccountName      string `json:"accountName,omitempty"`
 	CharacNo         int    `json:"characNo,omitempty"`
+	CharacName       string `json:"characName,omitempty"`
 	Cera             int64  `json:"cera"`
 	CeraPoint        int64  `json:"ceraPoint"`
 	AccountMoney     int64  `json:"accountMoney"`
@@ -395,6 +398,7 @@ type CharacQuery struct {
 	LevMax   *int   // 默认 999
 	Job      *int   // 职业，nil 不过滤
 	Name     string // 角色名（简体，内部会按需转繁体匹配）
+	Account  string // 账号名，按 d_taiwan.accounts.accountname LIKE 过滤
 	Mid      *int64 // 限定账号UID(m_id)，nil 不过滤
 	Page     int
 	PageSize int
@@ -433,6 +437,10 @@ func (g *GameDB) ListCharac(q CharacQuery) (list []Charac, total int, err error)
 		where = append(where, "charac_name LIKE ?")
 		args = append(args, "%"+SimpToTrad(q.Name)+"%")
 	}
+	if strings.TrimSpace(q.Account) != "" {
+		where = append(where, "m_id IN (SELECT UID FROM `d_taiwan`.`accounts` WHERE accountname LIKE ?)")
+		args = append(args, "%"+strings.TrimSpace(q.Account)+"%")
+	}
 	if q.Mid != nil {
 		where = append(where, "m_id = ?")
 		args = append(args, *q.Mid)
@@ -463,6 +471,9 @@ func (g *GameDB) ListCharac(q CharacQuery) (list []Charac, total int, err error)
 		}
 		list = append(list, c)
 	}
+	if err := g.fillCharacAccountNames(list); err != nil {
+		return nil, 0, err
+	}
 	return list, total, rows.Err()
 }
 
@@ -477,6 +488,8 @@ func (g *GameDB) GetCharac(characNo int) (*Charac, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.CharacName = TradToSimp(c.CharacName)
+	c.AccountName = g.accountNameByUID(c.Mid)
 	return &c, nil
 }
 
@@ -496,6 +509,9 @@ func (g *GameDB) ListCharacByAccountUid(uid int64) ([]Charac, error) {
 		}
 		c.CharacName = TradToSimp(c.CharacName)
 		list = append(list, c)
+	}
+	if err := g.fillCharacAccountNames(list); err != nil {
+		return nil, err
 	}
 	return list, rows.Err()
 }
@@ -532,7 +548,162 @@ func scanCharac(s rowScanner) (Charac, error) {
 		&c.MaxHP, &c.MaxMP, &c.PhyAttack, &c.PhyDefense, &c.MagAttack, &c.MagDefense,
 		&c.AttackSpeed, &c.CastSpeed, &c.MoveSpeed, &c.HitRecovery, &c.Jump, &c.Fatigue,
 		&c.CreateTime)
+	c.CharacName = TradToSimp(c.CharacName)
 	return c, err
+}
+
+// FindAccountByName 按账号名定位账号。先精确匹配，未命中再按 LIKE 匹配；LIKE 多命中会返回错误。
+func (g *GameDB) FindAccountByName(account string) (uid int64, accountName string, err error) {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return 0, "", fmt.Errorf("账号名不能为空")
+	}
+	if err := g.db.QueryRow("SELECT UID, accountname FROM `d_taiwan`.`accounts` WHERE accountname = ? LIMIT 1", account).
+		Scan(&uid, &accountName); err == nil {
+		return uid, accountName, nil
+	} else if err != sql.ErrNoRows {
+		return 0, "", fmt.Errorf("查询账号失败: %w", err)
+	}
+
+	rows, err := g.db.Query("SELECT UID, accountname FROM `d_taiwan`.`accounts` WHERE accountname LIKE ? ORDER BY UID DESC LIMIT 2", "%"+account+"%")
+	if err != nil {
+		return 0, "", fmt.Errorf("查询账号失败: %w", err)
+	}
+	defer rows.Close()
+	var matches []struct {
+		uid  int64
+		name string
+	}
+	for rows.Next() {
+		var m struct {
+			uid  int64
+			name string
+		}
+		if err := rows.Scan(&m.uid, &m.name); err != nil {
+			return 0, "", err
+		}
+		matches = append(matches, m)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, "", err
+	}
+	if len(matches) == 0 {
+		return 0, "", fmt.Errorf("账号不存在: %s", account)
+	}
+	if len(matches) > 1 {
+		return 0, "", fmt.Errorf("账号名不唯一，请使用账号 UID 或更精确的账号名")
+	}
+	return matches[0].uid, matches[0].name, nil
+}
+
+// FindCharacByName 按角色名定位角色。先精确匹配，未命中再按 LIKE 匹配；LIKE 多命中会返回错误。
+func (g *GameDB) FindCharacByName(name string) (*Charac, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("角色名不能为空")
+	}
+	tradName := SimpToTrad(name)
+	scanOne := func(q string, arg string) (*Charac, error) {
+		row := g.db.QueryRow(characSelectCols+"FROM `taiwan_cain`.`charac_info` "+q, arg)
+		c, err := scanCharac(row)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		c.AccountName = g.accountNameByUID(c.Mid)
+		return &c, nil
+	}
+	if c, err := scanOne("WHERE charac_name = ? LIMIT 1", tradName); err != nil || c != nil {
+		return c, err
+	}
+
+	rows, err := g.db.Query(characSelectCols+
+		"FROM `taiwan_cain`.`charac_info` WHERE charac_name LIKE ? ORDER BY charac_no DESC LIMIT 2", "%"+tradName+"%")
+	if err != nil {
+		return nil, fmt.Errorf("查询角色失败: %w", err)
+	}
+	defer rows.Close()
+	var matches []Charac
+	for rows.Next() {
+		c, err := scanCharac(rows)
+		if err != nil {
+			return nil, err
+		}
+		matches = append(matches, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("角色不存在: %s", name)
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("角色名不唯一，请使用角色 ID 或更精确的角色名")
+	}
+	c := matches[0]
+	c.AccountName = g.accountNameByUID(c.Mid)
+	return &c, nil
+}
+
+func (g *GameDB) accountNameByUID(uid int64) string {
+	if uid <= 0 {
+		return ""
+	}
+	var name sql.NullString
+	if err := g.db.QueryRow("SELECT accountname FROM `d_taiwan`.`accounts` WHERE UID = ? LIMIT 1", uid).Scan(&name); err == nil && name.Valid {
+		return name.String
+	}
+	return ""
+}
+
+func (g *GameDB) fillCharacAccountNames(list []Charac) error {
+	if len(list) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(list))
+	seen := make(map[int64]struct{})
+	for _, c := range list {
+		if c.Mid <= 0 {
+			continue
+		}
+		if _, ok := seen[c.Mid]; ok {
+			continue
+		}
+		seen[c.Mid] = struct{}{}
+		ids = append(ids, c.Mid)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := g.db.Query("SELECT UID, accountname FROM `d_taiwan`.`accounts` WHERE UID IN ("+strings.Join(placeholders, ",")+")", args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	names := make(map[int64]string)
+	for rows.Next() {
+		var uid int64
+		var name string
+		if err := rows.Scan(&uid, &name); err != nil {
+			return err
+		}
+		names[uid] = name
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range list {
+		list[i].AccountName = names[list[i].Mid]
+	}
+	return nil
 }
 
 // RenameCharac 修改角色名。调用方负责传入正确编码/繁简后的名称。
@@ -673,8 +844,10 @@ func (g *GameDB) ResetCreateLimitForAccount(uid int64) error {
 // GetAccountResources 汇总账号与可选角色资源。
 func (g *GameDB) GetAccountResources(uid int64, characNo int) (AccountResources, error) {
 	out := AccountResources{UID: uid, CharacNo: characNo}
+	var c *Charac
+	var err error
 	if uid <= 0 && characNo > 0 {
-		c, err := g.GetCharac(characNo)
+		c, err = g.GetCharac(characNo)
 		if err != nil {
 			return out, err
 		}
@@ -686,6 +859,22 @@ func (g *GameDB) GetAccountResources(uid int64, characNo int) (AccountResources,
 	}
 	if uid <= 0 {
 		return out, fmt.Errorf("账号 UID 或角色 ID 至少提供一个")
+	}
+	out.AccountName = g.accountNameByUID(uid)
+	if characNo > 0 {
+		if c == nil {
+			c, err = g.GetCharac(characNo)
+			if err != nil {
+				return out, err
+			}
+		}
+		if c == nil {
+			return out, fmt.Errorf("角色不存在: %d", characNo)
+		}
+		out.CharacName = c.CharacName
+		if out.AccountName == "" {
+			out.AccountName = c.AccountName
+		}
 	}
 
 	out.Cera = g.scalarInt64("SELECT cera FROM `taiwan_billing`.`cash_cera` WHERE account = ?", uid)

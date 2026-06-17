@@ -309,7 +309,7 @@ func (p *Pvf) loadTree() {
 	for i := int32(0); i < p.header.treeCount; i++ {
 		fileNumber := t.readInt()
 		pathLength := t.readInt()
-		filePath := string(t.readBytes(int(pathLength)))
+		filePath := normalizeResourcePath(string(t.readBytes(int(pathLength))))
 		// (raw + 3) & 0xFFFFFFFC 做 4 字节对齐
 		fileLength := (t.readInt() + 3) & ^int32(3)
 		crc := t.readInt()
@@ -347,7 +347,17 @@ func baseName(path string) string {
 	return path
 }
 
+func normalizeResourcePath(path string) string {
+	path = strings.TrimSpace(strings.ReplaceAll(path, "\\", "/"))
+	path = strings.TrimLeft(path, "/")
+	for strings.Contains(path, "//") {
+		path = strings.ReplaceAll(path, "//", "/")
+	}
+	return strings.ToLower(path)
+}
+
 func (p *Pvf) getTreeFile(path string) *PvfFile {
+	path = normalizeResourcePath(path)
 	root := strings.ToLower(rootPathOf(path))
 	files := p.treeDict[root]
 	if len(files) == 0 {
@@ -371,6 +381,7 @@ func (p *Pvf) getTreeFile(path string) *PvfFile {
 
 // IsExist 判断脚本是否存在（对应 Java isExist，仅精确匹配，不含 (r)/(f) 兼容）。
 func (p *Pvf) IsExist(path string) bool {
+	path = normalizeResourcePath(path)
 	root := strings.ToLower(rootPathOf(path))
 	for _, f := range p.treeDict[root] {
 		if strings.EqualFold(f.Path, path) {
@@ -382,6 +393,7 @@ func (p *Pvf) IsExist(path string) bool {
 
 // getTreeContent 读取并 CRC 解密某个脚本的原始字节。
 func (p *Pvf) getTreeContent(path string) []byte {
+	path = normalizeResourcePath(path)
 	f := p.getTreeFile(path)
 	if f == nil {
 		return nil
@@ -417,8 +429,8 @@ func (p *Pvf) loadNString() error {
 	lst := lstParse(p, content) // index -> str 文件路径
 	p.nString = make(map[string]map[string]string)
 	for _, v := range lst {
-		fileName := v
-		strContent := p.getTreeContent(strings.ToLower(fileName))
+		fileName := normalizeResourcePath(v)
+		strContent := p.getTreeContent(fileName)
 		if strContent == nil {
 			continue
 		}
@@ -480,7 +492,7 @@ func suffixOf(path string) string {
 
 // LoadScript 返回脚本的结构化数据（对应 Java loadScript，输出 JSONObject -> 此处为 *OrderedMap）。
 func (p *Pvf) LoadScript(path string) *OrderedMap {
-	path = strings.ToLower(path)
+	path = normalizeResourcePath(path)
 	content := p.getTreeContent(path)
 	if content == nil {
 		return NewOrderedMap()
@@ -503,7 +515,7 @@ func (p *Pvf) LoadScript(path string) *OrderedMap {
 
 // LoadScriptSource 返回还原后的脚本源码文本（对应 Java loadScriptSource）。
 func (p *Pvf) LoadScriptSource(path string) string {
-	path = strings.ToLower(path)
+	path = normalizeResourcePath(path)
 	content := p.getTreeContent(path)
 	if content == nil {
 		return ""
@@ -1018,6 +1030,13 @@ func (m *OrderedMap) String() string {
 	return sb.String()
 }
 
+func (m *OrderedMap) MarshalJSON() ([]byte, error) {
+	if m == nil {
+		return []byte("null"), nil
+	}
+	return []byte(m.String()), nil
+}
+
 func writeJSONValue(sb *strings.Builder, v interface{}) {
 	switch val := v.(type) {
 	case *OrderedMap:
@@ -1112,7 +1131,7 @@ func decryptNpkName(data []byte) string {
 	for i := 0; i < len(data) && i < npkImgNameLen; i++ {
 		dec[i] = data[i] ^ npkDecryptKey[i]
 	}
-	return strings.ReplaceAll(string(dec), "\x00", "")
+	return normalizeResourcePath(strings.ReplaceAll(string(dec), "\x00", ""))
 }
 
 // 颜色位
@@ -1315,6 +1334,10 @@ func (n *Npk) readNpkCache(path string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	for _, t := range tables {
+		t.Name = normalizeResourcePath(t.Name)
+		if t.Name == "" {
+			continue
+		}
 		if _, ok := n.nameTable[t.Name]; !ok {
 			n.nameTable[t.Name] = base
 			n.indexTab[t.Name] = t
@@ -1361,6 +1384,7 @@ func readImgTables(r io.Reader) ([]NpkImgTable, error) {
 
 // LoadImg 加载一个 IMG（对应 NpkCoder.loadImg）。
 func (n *Npk) LoadImg(name string) (*NpkImg, error) {
+	name = normalizeResourcePath(name)
 	npkFile, ok := n.nameTable[name]
 	if !ok {
 		return nil, fmt.Errorf("未找到 img: %s", name)
@@ -1544,7 +1568,7 @@ func linkTextures(textures []*NpkTexture, targetMap map[int]int) {
 		if !tex.IsLink {
 			continue
 		}
-		if tgt, ok := targetMap[tex.Index]; ok && tgt != tex.Index {
+		if tgt, ok := targetMap[tex.Index]; ok && tgt >= 0 && tgt < len(textures) && tgt != tex.Index {
 			tex.linkTarget = textures[tgt]
 		}
 	}

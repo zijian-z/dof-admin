@@ -588,6 +588,11 @@ textarea:focus {
   color: #3a4039;
 }
 
+.health-row code.breakable {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .drawer-backdrop {
   position: fixed;
   inset: 0;
@@ -637,6 +642,60 @@ textarea:focus {
 
 .item-table .data-table {
   min-width: 960px;
+}
+
+.item-browser {
+  display: grid;
+  gap: 10px;
+}
+
+.browser-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.category-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.category-group-ui {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.category-group-ui > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding-top: 5px;
+}
+
+.category-group-ui > div {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.category-chip {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  color: #344039;
+  font-size: 12px;
+}
+
+.category-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 700;
 }
 
 .icon-slot {
@@ -708,6 +767,22 @@ textarea:focus {
   background: var(--surface-alt);
   padding: 10px;
   color: #343b34;
+}
+
+.code-block {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #20251f;
+  color: #eef1eb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .toast-stack {
@@ -814,6 +889,10 @@ textarea:focus {
   .drawer .form-grid,
   .detail-facts,
   .stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .category-group-ui {
     grid-template-columns: 1fr;
   }
 

@@ -195,18 +195,23 @@ type ItemIcon struct {
 
 // Item 物品通用字段（对应 entity.common.Item）。
 type Item struct {
-	ID           int       `json:"id"`
-	Rarity       int       `json:"rarity"`
-	RarityName   string    `json:"rarityName"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"`       // equipment / stackable / other
-	UsableJobs   []string  `json:"usableJobs"` // 职业中文
-	AttachType   string    `json:"attachType"` // 绑定/交易类型中文
-	MinimumLevel int       `json:"minimumLevel"`
-	Description  string    `json:"description"`
-	Explain      string    `json:"explain"`
-	StackLimit   int       `json:"stackLimit"`
-	Icon         *ItemIcon `json:"icon,omitempty"`
+	ID           int         `json:"id"`
+	Rarity       int         `json:"rarity"`
+	RarityName   string      `json:"rarityName"`
+	Name         string      `json:"name"`
+	Type         string      `json:"type"`       // equipment / stackable / other
+	UsableJobs   []string    `json:"usableJobs"` // 职业中文
+	AttachType   string      `json:"attachType"` // 绑定/交易类型中文
+	MinimumLevel int         `json:"minimumLevel"`
+	Description  string      `json:"description"`
+	Explain      string      `json:"explain"`
+	StackLimit   int         `json:"stackLimit"`
+	Icon         *ItemIcon   `json:"icon,omitempty"`
+	IconURL      string      `json:"iconUrl,omitempty"`
+	PVFPath      string      `json:"pvfPath,omitempty"`
+	PVFSource    string      `json:"pvfSource,omitempty"`
+	PVFFields    *OrderedMap `json:"pvfFields,omitempty"`
+	PVFError     string      `json:"pvfError,omitempty"`
 }
 
 // Equipment 装备（对应 entity.equipment.Equipment，Item 内嵌）。
@@ -216,6 +221,7 @@ type Equipment struct {
 	EquipmentTypeTag string `json:"equipmentTypeTag"` // 原始标签
 	Avatar           bool   `json:"avatar"`           // 是否时装
 	ItemGroup        string `json:"itemGroup"`        // 子类型中文
+	ItemGroupTag     string `json:"itemGroupTag"`     // 原始子类型
 
 	PhysicalAttack  []int `json:"physicalAttack,omitempty"`
 	MagicalAttack   []int `json:"magicalAttack,omitempty"`
@@ -285,7 +291,8 @@ type Equipment struct {
 // Stackable 道具（对应 entity.stackable.Stackable，Item 内嵌）。
 type Stackable struct {
 	Item
-	StackableType string `json:"stackableType"` // 道具类型中文
+	StackableType    string `json:"stackableType"`    // 道具类型中文
+	StackableTypeTag string `json:"stackableTypeTag"` // 原始标签
 }
 
 // =============================================================================
@@ -439,7 +446,7 @@ func (it *Item) parseForScript(s *OrderedMap) {
 
 	// 图标
 	if icon := omArray(s, "[icon]"); len(icon) > 0 {
-		ic := &ItemIcon{Path: strings.ToLower(toStr(icon[0]))}
+		ic := &ItemIcon{Path: normalizeResourcePath(toStr(icon[0]))}
 		if len(icon) >= 2 {
 			if idx, ok := toInt(icon[1]); ok {
 				ic.Index = idx
@@ -463,7 +470,8 @@ func EquipmentForScript(s *OrderedMap) *Equipment {
 	e.EquipmentType, e.Avatar = equipmentTypeName(tag)
 
 	if s.Has("[item group name]") {
-		e.ItemGroup = itemGroupName(firstStr(s, "[item group name]", ""))
+		e.ItemGroupTag = firstStr(s, "[item group name]", "")
+		e.ItemGroup = itemGroupName(e.ItemGroupTag)
 	}
 
 	e.PhysicalAttack = arrInt(s, "[equipment physical attack]")
@@ -541,7 +549,8 @@ func EquipmentForScript(s *OrderedMap) *Equipment {
 func StackableForScript(s *OrderedMap) *Stackable {
 	sk := &Stackable{}
 	sk.parseForScript(s)
-	sk.StackableType = stackableTypeName(firstStr(s, "[stackable type]", "[etc]"))
+	sk.StackableTypeTag = firstStr(s, "[stackable type]", "[etc]")
+	sk.StackableType = stackableTypeName(sk.StackableTypeTag)
 	return sk
 }
 
@@ -567,12 +576,10 @@ func (p *Pvf) GetEquipmentList() []*Equipment {
 				str = toStr(v)
 			}
 		}
-		str = strings.TrimSpace(str)
-		if strings.HasPrefix(str, "/") {
-			str = str[1:]
-		}
-		script := p.LoadScript("equipment/" + str)
+		path := itemScriptPath("equipment", str)
+		script := p.LoadScript(path)
 		eq := EquipmentForScript(script)
+		eq.PVFPath = path
 		if id, ok := atoiSafe(key); ok {
 			eq.ID = id
 		}
@@ -595,13 +602,10 @@ func (p *Pvf) GetStackableList() []*Stackable {
 				str = toStr(v)
 			}
 		}
-		str = strings.TrimSpace(str)
-		path := "stackable/" + str
-		if strings.HasPrefix(str, "/") {
-			path = "stackable" + str
-		}
+		path := itemScriptPath("stackable", str)
 		script := p.LoadScript(path)
 		sk := StackableForScript(script)
+		sk.PVFPath = path
 		if id, ok := atoiSafe(key); ok {
 			sk.ID = id
 		}
@@ -611,6 +615,18 @@ func (p *Pvf) GetStackableList() []*Stackable {
 		list = append(list, sk)
 	}
 	return list
+}
+
+func itemScriptPath(root, value string) string {
+	path := normalizeResourcePath(value)
+	root = normalizeResourcePath(root)
+	if path == "" {
+		return root + "/"
+	}
+	if path == root || strings.HasPrefix(path, root+"/") {
+		return path
+	}
+	return root + "/" + path
 }
 
 // GetExpTable 读取 character/exptable.tbl 中的等级经验表。

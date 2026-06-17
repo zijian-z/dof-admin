@@ -3,7 +3,7 @@ const state = {
   health: null,
   characters: { page: 1, pageSize: 20, total: 0, items: [] },
   mail: { page: 1, pageSize: 20, hasMore: false, items: [] },
-  items: { page: 1, pageSize: 40, total: 0, items: [], facetsLoaded: false },
+  items: { page: 1, pageSize: 40, total: 0, items: [], facetsLoaded: false, category: "all" },
   resources: null,
   selectedCharacter: null
 };
@@ -95,6 +95,37 @@ const statLabels = {
   stackableType: "道具类型"
 };
 
+const itemCategories = [
+  { key: "all", label: "全部物品", filters: { type: "all" } },
+  { key: "equipment_all", label: "全部装备", filters: { type: "equipment" } },
+  { key: "stackable_all", label: "全部道具", filters: { type: "stackable" } },
+  { key: "weapon", label: "武器", filters: { type: "equipment", equipmentType: "weapon" } },
+  { key: "titleName", label: "称号", filters: { type: "equipment", equipmentType: "titleName" } },
+  { key: "coat", label: "上衣", filters: { type: "equipment", equipmentType: "coat" } },
+  { key: "shoulder", label: "护肩", filters: { type: "equipment", equipmentType: "shoulder" } },
+  { key: "pants", label: "裤子", filters: { type: "equipment", equipmentType: "pants" } },
+  { key: "shoes", label: "鞋子", filters: { type: "equipment", equipmentType: "shoes" } },
+  { key: "waist", label: "腰带", filters: { type: "equipment", equipmentType: "waist" } },
+  { key: "amulet", label: "项链", filters: { type: "equipment", equipmentType: "amulet" } },
+  { key: "wrist", label: "手镯", filters: { type: "equipment", equipmentType: "wrist" } },
+  { key: "ring", label: "戒指", filters: { type: "equipment", equipmentType: "ring" } },
+  { key: "support", label: "辅助装备", filters: { type: "equipment", equipmentType: "support" } },
+  { key: "magicStone", label: "魔法石", filters: { type: "equipment", equipmentType: "magicStone" } },
+  { key: "creature_equipment", label: "宠物装备/宠物", filters: { type: "equipment", equipmentType: "creature" } },
+  { key: "avatar", label: "时装", filters: { type: "equipment", avatar: "true" } },
+  { key: "waste", label: "消耗品", filters: { type: "stackable", stackableType: "waste" } },
+  { key: "material", label: "材料", filters: { type: "stackable", stackableType: "material" } },
+  { key: "recipe", label: "设计图", filters: { type: "stackable", stackableType: "recipe" } },
+  { key: "material_expert_job", label: "副职业", filters: { type: "stackable", stackableType: "material_expert_job" } },
+  { key: "quest", label: "任务道具", filters: { type: "stackable", stackableType: "quest" } },
+  { key: "booster", label: "礼盒", filters: { type: "stackable", stackableType: "booster" } },
+  { key: "feed", label: "饲料", filters: { type: "stackable", stackableType: "feed" } },
+  { key: "creature_stackable", label: "宠物道具", filters: { type: "stackable", stackableType: "creature" } },
+  { key: "throwItem", label: "投掷物", filters: { type: "stackable", stackableType: "throwItem" } },
+  { key: "legacy", label: "罐子", filters: { type: "stackable", stackableType: "legacy" } },
+  { key: "etc", label: "杂物", filters: { type: "stackable", stackableType: "etc" } }
+];
+
 const commonItemKeys = new Set([
   "id",
   "rarity",
@@ -107,7 +138,15 @@ const commonItemKeys = new Set([
   "description",
   "explain",
   "stackLimit",
-  "icon"
+  "icon",
+  "iconUrl",
+  "pvfPath",
+  "pvfSource",
+  "pvfFields",
+  "pvfError",
+  "equipmentTypeTag",
+  "itemGroupTag",
+  "stackableTypeTag"
 ]);
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -221,10 +260,10 @@ function bindMail() {
     if (!button) return;
     deleteMail(button.dataset.id);
   });
-  $("#reset-create-limit").addEventListener("click", resetCreateLimit);
 }
 
 function bindItems() {
+  renderItemCategoryBrowser();
   $("#item-filter").addEventListener("submit", (event) => {
     event.preventDefault();
     state.items.page = 1;
@@ -233,11 +272,18 @@ function bindItems() {
   $("#reset-item-filter").addEventListener("click", () => {
     $("#item-filter").reset();
     state.items.page = 1;
+    state.items.category = "all";
     updateItemFilterAvailability();
+    renderItemCategoryBrowser();
     loadItems();
   });
   $("#refresh-items").addEventListener("click", reloadItems);
   $("#item-type").addEventListener("change", updateItemFilterAvailability);
+  $("#item-category-browser").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-category]");
+    if (!button) return;
+    applyItemCategory(button.dataset.category);
+  });
   $("#items-prev").addEventListener("click", () => {
     if (state.items.page > 1) {
       state.items.page -= 1;
@@ -366,7 +412,7 @@ function healthPanel(title, ok, rows) {
       ${rows.map(([label, value]) => `
         <div>
           <span class="subtle">${escapeHTML(String(label))}</span>
-          <code title="${escapeHTML(String(value ?? ""))}">${escapeHTML(String(value ?? "")) || "-"}</code>
+          <code class="${String(label).toLowerCase() === "commit" ? "breakable" : ""}" title="${escapeHTML(String(value ?? ""))}">${escapeHTML(String(value ?? "")) || "-"}</code>
         </div>
       `).join("")}
     </section>
@@ -409,7 +455,12 @@ function renderCharacters() {
             <span class="subtle">ID ${item.characNo}</span>
           </div>
         </td>
-        <td>${item.mid}</td>
+        <td>
+          <div class="main-cell">
+            <strong title="${escapeHTML(item.accountName || "")}">${escapeHTML(item.accountName || "-")}</strong>
+            <span class="subtle">UID ${item.mid}</span>
+          </div>
+        </td>
         <td>${item.job}</td>
         <td>${item.lev}</td>
         <td>${item.hp} / ${item.maxHp} · MP ${item.maxMp}</td>
@@ -434,6 +485,8 @@ function renderCharacters() {
 }
 
 function fillOperations(character) {
+  $("#resource-query-form [name='account']").value = character.accountName || "";
+  $("#resource-query-form [name='characName']").value = character.characName || "";
   $("#resource-query-form [name='uid']").value = String(character.mid);
   $("#resource-query-form [name='characNo']").value = String(character.characNo);
   $("#advanced-character-form [name='characNo']").value = String(character.characNo);
@@ -450,6 +503,8 @@ function fillAdvancedCharacter(character) {
   form.elements.job.value = character.job ?? "";
   form.elements.growType.value = character.growType ?? "";
   form.elements.expertJob.value = character.expertJob ?? "";
+  $("#resource-query-form [name='account']").value = character.accountName || "";
+  $("#resource-query-form [name='characName']").value = character.characName || "";
   $("#resource-query-form [name='uid']").value = String(character.mid);
   $("#resource-query-form [name='characNo']").value = String(character.characNo);
   $("#pvp-form [name='characNo']").value = String(character.characNo);
@@ -461,8 +516,8 @@ async function loadResources() {
   const form = $("#resource-query-form");
   const params = formParams(form);
   const summary = $("#resource-summary");
-  if (!params.has("uid") && !params.has("characNo")) {
-    summary.innerHTML = `<div class="muted-panel">输入账号 UID 或角色 ID 后查询。</div>`;
+  if (!params.has("account") && !params.has("characName") && !params.has("uid") && !params.has("characNo")) {
+    summary.innerHTML = `<div class="muted-panel">输入账号名、角色名、账号 UID 或角色 ID 后查询。</div>`;
     return;
   }
   summary.innerHTML = `<div class="muted-panel">资源加载中</div>`;
@@ -472,8 +527,12 @@ async function loadResources() {
     if (data.uid) {
       form.elements.uid.value = String(data.uid);
     }
+    if (data.accountName) {
+      form.elements.account.value = data.accountName;
+    }
     if (data.characNo) {
       form.elements.characNo.value = String(data.characNo);
+      form.elements.characName.value = data.characName || form.elements.characName.value;
       $("#advanced-character-form [name='characNo']").value = String(data.characNo);
       $("#pvp-form [name='characNo']").value = String(data.characNo);
     }
@@ -486,7 +545,9 @@ async function loadResources() {
 
 function renderResources(data) {
   const rows = [
+    ["账号名", data.accountName || "-"],
     ["账号 UID", data.uid],
+    ["角色名", data.characName || "-"],
     ["角色 ID", data.characNo || "-"],
     ["D币 / 点券", data.cera],
     ["D点 / 代币", data.ceraPoint],
@@ -520,6 +581,8 @@ async function patchResource(event) {
   const query = $("#resource-query-form");
   const form = event.currentTarget;
   const payload = {
+    account: query.elements.account.value.trim(),
+    characName: query.elements.characName.value.trim(),
     uid: numberOrZero(query.elements.uid.value),
     characNo: numberOrZero(query.elements.characNo.value),
     target: form.elements.target.value,
@@ -761,16 +824,6 @@ async function deleteMail(id) {
   }
 }
 
-async function resetCreateLimit() {
-  if (!confirm("确定清空角色创建限制表吗？")) return;
-  try {
-    await api("/api/reset-create-limit", { method: "POST", body: "{}" });
-    showToast("角色创建限制已重置", "ok");
-  } catch (error) {
-    showToast(error.message, "err");
-  }
-}
-
 async function loadItems() {
   const body = $("#items-body");
   body.innerHTML = `<tr><td colspan="8" class="empty">加载中，首次解析 PVF 可能需要一些时间</td></tr>`;
@@ -783,7 +836,8 @@ async function loadItems() {
       pageSize: data.pageSize,
       total: data.total,
       items: data.items || [],
-      facetsLoaded: true
+      facetsLoaded: true,
+      category: state.items.category || "all"
     };
     populateItemFacets(data.facets);
     renderItems();
@@ -808,6 +862,48 @@ async function reloadItems() {
   }
 }
 
+function renderItemCategoryBrowser() {
+  const target = $("#item-category-browser");
+  if (!target) return;
+  const groups = [
+    ["总览", ["all", "equipment_all", "stackable_all"]],
+    ["装备", ["weapon", "titleName", "coat", "shoulder", "pants", "shoes", "waist", "amulet", "wrist", "ring", "support", "magicStone", "creature_equipment", "avatar"]],
+    ["道具", ["waste", "material", "recipe", "material_expert_job", "quest", "booster", "feed", "creature_stackable", "throwItem", "legacy", "etc"]]
+  ];
+  const byKey = new Map(itemCategories.map((item) => [item.key, item]));
+  target.innerHTML = groups.map(([label, keys]) => `
+    <div class="category-group-ui">
+      <span>${escapeHTML(label)}</span>
+      <div>
+        ${keys.map((key) => {
+          const item = byKey.get(key);
+          if (!item) return "";
+          const active = state.items.category === key ? "active" : "";
+          return `<button class="category-chip ${active}" type="button" data-category="${escapeHTML(key)}">${escapeHTML(item.label)}</button>`;
+        }).join("")}
+      </div>
+    </div>
+  `).join("");
+  const current = byKey.get(state.items.category || "all") || byKey.get("all");
+  $("#item-browser-current").textContent = current ? current.label : "全部分类";
+}
+
+function applyItemCategory(key) {
+  const category = itemCategories.find((item) => item.key === key) || itemCategories[0];
+  const form = $("#item-filter");
+  form.reset();
+  for (const [name, value] of Object.entries(category.filters)) {
+    if (form.elements[name]) {
+      form.elements[name].value = value;
+    }
+  }
+  state.items.category = category.key;
+  state.items.page = 1;
+  updateItemFilterAvailability();
+  renderItemCategoryBrowser();
+  loadItems();
+}
+
 function renderItems() {
   const body = $("#items-body");
   if (state.items.items.length === 0) {
@@ -819,7 +915,9 @@ function renderItems() {
         <td>
           <div class="main-cell">
             <strong title="${escapeHTML(item.name)}">${escapeHTML(item.name)}</strong>
-            <span class="subtle">ID ${item.id}${item.explainPreview ? ` · ${escapeHTML(item.explainPreview)}` : ""}</span>
+            <span class="subtle">ID ${item.id}${item.pvfPath ? ` · ${escapeHTML(item.pvfPath)}` : ""}</span>
+            ${item.icon?.path ? `<span class="subtle">IMG ${escapeHTML(item.icon.path)}#${item.icon.index || 0}</span>` : ""}
+            ${item.explainPreview ? `<span class="subtle">${escapeHTML(item.explainPreview)}</span>` : ""}
           </div>
         </td>
         <td>${escapeHTML(item.equipmentType || item.stackableType || item.typeName)}${item.itemGroup ? `<div class="subtle">${escapeHTML(item.itemGroup)}</div>` : ""}</td>
@@ -856,6 +954,11 @@ async function openItemDrawer(type, id) {
 function renderItemDetail(item) {
   $("#item-drawer-title").textContent = item.name || "物品详情";
   $("#item-drawer-subtitle").textContent = `ID ${item.id} · ${typeName(item.type)}`;
+  const iconFacts = item.icon ? [
+    ["图标 IMG", item.icon.path || ""],
+    ["图标帧", item.icon.index ?? 0],
+    ["图标接口", item.iconUrl || `/api/items/icon?path=${encodeURIComponent(item.icon.path || "")}&index=${encodeURIComponent(item.icon.index || 0)}`]
+  ] : [];
   const stats = Object.entries(item)
     .filter(([key, value]) => !commonItemKeys.has(key) && hasValue(value))
     .map(([key, value]) => `
@@ -881,6 +984,8 @@ function renderItemDetail(item) {
       <div class="fact"><span>携带上限</span><strong>${item.stackLimit ?? 1}</strong></div>
       <div class="fact"><span>可用职业</span><strong>${escapeHTML(formatValue(item.usableJobs || []))}</strong></div>
       <div class="fact"><span>稀有度</span><strong>${escapeHTML(item.rarityName || "")}</strong></div>
+      <div class="fact"><span>PVF 文件</span><strong>${escapeHTML(item.pvfPath || "-")}</strong></div>
+      ${iconFacts.map(([label, value]) => `<div class="fact"><span>${escapeHTML(label)}</span><strong>${escapeHTML(formatValue(value) || "-")}</strong></div>`).join("")}
     </div>
     <div class="row-actions">
       <button class="btn primary" type="button" data-detail-mail="${item.id}">填入发货</button>
@@ -888,6 +993,9 @@ function renderItemDetail(item) {
     ${item.description ? `<div><h3>描述</h3><div class="text-block">${escapeHTML(item.description)}</div></div>` : ""}
     ${item.explain ? `<div><h3>说明</h3><div class="text-block">${escapeHTML(item.explain)}</div></div>` : ""}
     ${stats ? `<div><h3>属性</h3><div class="stat-grid">${stats}</div></div>` : ""}
+    ${item.pvfError ? `<div><h3>PVF 读取错误</h3><div class="text-block">${escapeHTML(item.pvfError)}</div></div>` : ""}
+    ${item.pvfSource ? `<div><h3>原始 PVF 源文本</h3><pre class="code-block">${escapeHTML(item.pvfSource)}</pre></div>` : ""}
+    ${item.pvfFields ? `<div><h3>解析字段 JSON</h3><pre class="code-block">${escapeHTML(JSON.stringify(item.pvfFields, null, 2))}</pre></div>` : ""}
   `;
   $("#item-detail [data-detail-mail]").addEventListener("click", () => fillMailItem(item.id));
   bindIconFallbacks();

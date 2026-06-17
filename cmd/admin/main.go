@@ -9,6 +9,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -97,23 +98,28 @@ type itemListResponse struct {
 }
 
 type itemSummary struct {
-	ID             int                 `json:"id"`
-	Name           string              `json:"name"`
-	Type           string              `json:"type"`
-	TypeName       string              `json:"typeName"`
-	Rarity         int                 `json:"rarity"`
-	RarityName     string              `json:"rarityName"`
-	AttachType     string              `json:"attachType"`
-	MinimumLevel   int                 `json:"minimumLevel"`
-	StackLimit     int                 `json:"stackLimit"`
-	UsableJobs     []string            `json:"usableJobs,omitempty"`
-	Icon           *dnfparser.ItemIcon `json:"icon,omitempty"`
-	EquipmentType  string              `json:"equipmentType,omitempty"`
-	ItemGroup      string              `json:"itemGroup,omitempty"`
-	Avatar         bool                `json:"avatar,omitempty"`
-	StackableType  string              `json:"stackableType,omitempty"`
-	Description    string              `json:"description,omitempty"`
-	ExplainPreview string              `json:"explainPreview,omitempty"`
+	ID               int                 `json:"id"`
+	Name             string              `json:"name"`
+	Type             string              `json:"type"`
+	TypeName         string              `json:"typeName"`
+	Rarity           int                 `json:"rarity"`
+	RarityName       string              `json:"rarityName"`
+	AttachType       string              `json:"attachType"`
+	MinimumLevel     int                 `json:"minimumLevel"`
+	StackLimit       int                 `json:"stackLimit"`
+	UsableJobs       []string            `json:"usableJobs,omitempty"`
+	Icon             *dnfparser.ItemIcon `json:"icon,omitempty"`
+	IconURL          string              `json:"iconUrl,omitempty"`
+	PVFPath          string              `json:"pvfPath,omitempty"`
+	EquipmentType    string              `json:"equipmentType,omitempty"`
+	EquipmentTypeTag string              `json:"equipmentTypeTag,omitempty"`
+	ItemGroup        string              `json:"itemGroup,omitempty"`
+	ItemGroupTag     string              `json:"itemGroupTag,omitempty"`
+	Avatar           bool                `json:"avatar,omitempty"`
+	StackableType    string              `json:"stackableType,omitempty"`
+	StackableTypeTag string              `json:"stackableTypeTag,omitempty"`
+	Description      string              `json:"description,omitempty"`
+	ExplainPreview   string              `json:"explainPreview,omitempty"`
 }
 
 type serviceState struct {
@@ -182,11 +188,13 @@ type characPatch struct {
 }
 
 type resourcePatchPayload struct {
-	UID      int64  `json:"uid"`
-	CharacNo int    `json:"characNo"`
-	Target   string `json:"target"`
-	Mode     string `json:"mode"`
-	Value    int64  `json:"value"`
+	UID        int64  `json:"uid"`
+	CharacNo   int    `json:"characNo"`
+	Account    string `json:"account"`
+	CharacName string `json:"characName"`
+	Target     string `json:"target"`
+	Mode       string `json:"mode"`
+	Value      int64  `json:"value"`
 }
 
 type renamePayload struct {
@@ -361,6 +369,7 @@ func (s *server) handleCharacters(w http.ResponseWriter, r *http.Request) {
 		LevMax:   optionalInt(q.Get("levMax")),
 		Job:      optionalInt(q.Get("job")),
 		Name:     strings.TrimSpace(q.Get("name")),
+		Account:  strings.TrimSpace(q.Get("account")),
 		Mid:      optionalInt64(q.Get("mid")),
 		Page:     pageValue(q.Get("page")),
 		PageSize: pageSizeValue(q.Get("pageSize"), 20, 100),
@@ -389,6 +398,11 @@ func (s *server) handleResources(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		uid := int64Value(q.Get("uid"), 0)
 		characNo := intValue(q.Get("characNo"), 0)
+		uid, characNo, err := resolveResourceTarget(game, uid, characNo, q.Get("account"), q.Get("characName"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		resources, err := game.GetAccountResources(uid, characNo)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -401,24 +415,20 @@ func (s *server) handleResources(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
 			return
 		}
+		var err error
 		uid := payload.UID
-		if uid <= 0 && payload.CharacNo > 0 {
-			c, err := game.GetCharac(payload.CharacNo)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			if c == nil {
-				writeError(w, http.StatusNotFound, "character not found")
-				return
-			}
-			uid = c.Mid
-		}
-		if uid <= 0 {
-			writeError(w, http.StatusBadRequest, "uid or characNo is required")
+		characNo := payload.CharacNo
+		uid, characNo, err = resolveResourceTarget(game, uid, characNo, payload.Account, payload.CharacName)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		err := game.ApplyResourcePatch(uid, payload.CharacNo, dnfparser.ResourcePatch{
+		payload.CharacNo = characNo
+		if uid <= 0 {
+			writeError(w, http.StatusBadRequest, "account, uid, characName or characNo is required")
+			return
+		}
+		err = game.ApplyResourcePatch(uid, payload.CharacNo, dnfparser.ResourcePatch{
 			Target: payload.Target,
 			Mode:   payload.Mode,
 			Value:  payload.Value,
@@ -436,6 +446,53 @@ func (s *server) handleResources(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func resolveResourceTarget(game *dnfparser.GameDB, uid int64, characNo int, account string, characName string) (int64, int, error) {
+	account = strings.TrimSpace(account)
+	characName = strings.TrimSpace(characName)
+
+	if characName != "" && characNo <= 0 {
+		c, err := game.FindCharacByName(characName)
+		if err != nil {
+			return uid, characNo, err
+		}
+		if c == nil {
+			return uid, characNo, fmt.Errorf("character not found: %s", characName)
+		}
+		characNo = c.CharacNo
+		if uid > 0 && c.Mid != uid {
+			return uid, characNo, fmt.Errorf("角色 %s 不属于账号 UID %d", c.CharacName, uid)
+		}
+		uid = c.Mid
+	}
+
+	if account != "" {
+		accountUID, _, err := game.FindAccountByName(account)
+		if err != nil {
+			return uid, characNo, err
+		}
+		if uid > 0 && accountUID != uid {
+			return uid, characNo, fmt.Errorf("账号名与账号 UID 不一致")
+		}
+		uid = accountUID
+	}
+
+	if characNo > 0 {
+		c, err := game.GetCharac(characNo)
+		if err != nil {
+			return uid, characNo, err
+		}
+		if c == nil {
+			return uid, characNo, fmt.Errorf("character not found: %d", characNo)
+		}
+		if uid > 0 && c.Mid != uid {
+			return uid, characNo, fmt.Errorf("角色 %s 不属于账号 UID %d", c.CharacName, uid)
+		}
+		uid = c.Mid
+	}
+
+	return uid, characNo, nil
 }
 
 func (s *server) handleCharacter(w http.ResponseWriter, r *http.Request) {
@@ -896,27 +953,59 @@ func (s *server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.items.mu.RLock()
-	defer s.items.mu.RUnlock()
+	var equipment *dnfparser.Equipment
+	var stackable *dnfparser.Stackable
 	switch kind {
 	case "equipment":
 		for _, item := range s.items.equipment {
 			if item.ID == id {
-				writeJSON(w, http.StatusOK, item)
-				return
+				copyItem := *item
+				equipment = &copyItem
+				break
 			}
 		}
 	case "stackable":
 		for _, item := range s.items.stackables {
 			if item.ID == id {
-				writeJSON(w, http.StatusOK, item)
-				return
+				copyItem := *item
+				stackable = &copyItem
+				break
 			}
 		}
 	default:
+		s.items.mu.RUnlock()
 		writeError(w, http.StatusBadRequest, "invalid item type")
 		return
 	}
+	s.items.mu.RUnlock()
+	if equipment != nil {
+		s.attachPVFDebug(&equipment.Item)
+		writeJSON(w, http.StatusOK, equipment)
+		return
+	}
+	if stackable != nil {
+		s.attachPVFDebug(&stackable.Item)
+		writeJSON(w, http.StatusOK, stackable)
+		return
+	}
 	writeError(w, http.StatusNotFound, "item not found")
+}
+
+func (s *server) attachPVFDebug(item *dnfparser.Item) {
+	if item == nil {
+		return
+	}
+	item.IconURL = iconURL(item.Icon)
+	if strings.TrimSpace(item.PVFPath) == "" || strings.TrimSpace(s.pvfPath) == "" {
+		return
+	}
+	pvf, err := dnfparser.OpenPvfWithCharset(s.pvfPath, s.pvfCharset)
+	if err != nil {
+		item.PVFError = err.Error()
+		return
+	}
+	item.PVFFields = pvf.LoadScript(item.PVFPath)
+	item.PVFSource = pvf.LoadScriptSource(item.PVFPath)
 }
 
 func (s *server) handleItemIcon(w http.ResponseWriter, r *http.Request) {
@@ -1112,10 +1201,10 @@ func matchesEquipment(item *dnfparser.Equipment, f itemFilter) bool {
 	if !matchesCommon(item.ID, item.Name, item.Rarity, item.MinimumLevel, f) {
 		return false
 	}
-	if f.EquipmentType != "" && item.EquipmentType != f.EquipmentType {
+	if f.EquipmentType != "" && !matchesFacet(f.EquipmentType, item.EquipmentType, item.EquipmentTypeTag) {
 		return false
 	}
-	if f.ItemGroup != "" && item.ItemGroup != f.ItemGroup {
+	if f.ItemGroup != "" && !matchesFacet(f.ItemGroup, item.ItemGroup, item.ItemGroupTag) {
 		return false
 	}
 	if f.StackableType != "" {
@@ -1131,13 +1220,78 @@ func matchesStackable(item *dnfparser.Stackable, f itemFilter) bool {
 	if !matchesCommon(item.ID, item.Name, item.Rarity, item.MinimumLevel, f) {
 		return false
 	}
-	if f.StackableType != "" && item.StackableType != f.StackableType {
+	if f.StackableType != "" && !matchesFacet(f.StackableType, item.StackableType, item.StackableTypeTag) {
 		return false
 	}
 	if f.EquipmentType != "" || f.ItemGroup != "" || f.Avatar != nil {
 		return false
 	}
 	return true
+}
+
+func matchesFacet(filter string, label string, tag string) bool {
+	filter = normalizeFacet(filter)
+	if filter == "" {
+		return true
+	}
+	for _, candidate := range []string{label, tag, tagAlias(tag)} {
+		if normalizeFacet(candidate) == filter {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeFacet(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.TrimPrefix(strings.TrimSuffix(s, "]"), "[")
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, "_", "")
+	s = strings.ReplaceAll(s, "-", "")
+	return s
+}
+
+func tagAlias(tag string) string {
+	switch strings.TrimSpace(strings.ToLower(tag)) {
+	case "[title name]":
+		return "titleName"
+	case "[magic stone]":
+		return "magicStone"
+	case "[artifact red]":
+		return "aartifactRed"
+	case "[artifact green]":
+		return "aartifactGreen"
+	case "[artifact blue]":
+		return "aartifactBlue"
+	case "[weapon avatar]":
+		return "weaponAvatar"
+	case "[aurora avatar]":
+		return "auroraAvatar"
+	case "[hat avatar]":
+		return "hatAvatar"
+	case "[hair avatar]":
+		return "hairAvatar"
+	case "[breast avatar]":
+		return "breastAvatar"
+	case "[face avatar]":
+		return "faceAvatar"
+	case "[waist avatar]":
+		return "waistAvatar"
+	case "[coat avatar]":
+		return "coatAvatar"
+	case "[pants avatar]":
+		return "pantsAvatar"
+	case "[shoes avatar]":
+		return "shoesAvatar"
+	case "[skin avatar]":
+		return "skinAvatar"
+	case "[material expert job]":
+		return "material_expert_job"
+	case "[throw]":
+		return "throwItem"
+	default:
+		return strings.Trim(tag, "[]")
+	}
 }
 
 func matchesCommon(id int, name string, rarity int, minimumLevel int, f itemFilter) bool {
@@ -1161,42 +1315,56 @@ func matchesCommon(id int, name string, rarity int, minimumLevel int, f itemFilt
 
 func equipmentSummary(item *dnfparser.Equipment) itemSummary {
 	return itemSummary{
-		ID:             item.ID,
-		Name:           item.Name,
-		Type:           "equipment",
-		TypeName:       "装备",
-		Rarity:         item.Rarity,
-		RarityName:     item.RarityName,
-		AttachType:     item.AttachType,
-		MinimumLevel:   item.MinimumLevel,
-		StackLimit:     item.StackLimit,
-		UsableJobs:     item.UsableJobs,
-		Icon:           item.Icon,
-		EquipmentType:  item.EquipmentType,
-		ItemGroup:      item.ItemGroup,
-		Avatar:         item.Avatar,
-		Description:    item.Description,
-		ExplainPreview: previewText(item.Explain),
+		ID:               item.ID,
+		Name:             item.Name,
+		Type:             "equipment",
+		TypeName:         "装备",
+		Rarity:           item.Rarity,
+		RarityName:       item.RarityName,
+		AttachType:       item.AttachType,
+		MinimumLevel:     item.MinimumLevel,
+		StackLimit:       item.StackLimit,
+		UsableJobs:       item.UsableJobs,
+		Icon:             item.Icon,
+		IconURL:          iconURL(item.Icon),
+		PVFPath:          item.PVFPath,
+		EquipmentType:    item.EquipmentType,
+		EquipmentTypeTag: item.EquipmentTypeTag,
+		ItemGroup:        item.ItemGroup,
+		ItemGroupTag:     item.ItemGroupTag,
+		Avatar:           item.Avatar,
+		Description:      item.Description,
+		ExplainPreview:   previewText(item.Explain),
 	}
 }
 
 func stackableSummary(item *dnfparser.Stackable) itemSummary {
 	return itemSummary{
-		ID:             item.ID,
-		Name:           item.Name,
-		Type:           "stackable",
-		TypeName:       "道具",
-		Rarity:         item.Rarity,
-		RarityName:     item.RarityName,
-		AttachType:     item.AttachType,
-		MinimumLevel:   item.MinimumLevel,
-		StackLimit:     item.StackLimit,
-		UsableJobs:     item.UsableJobs,
-		Icon:           item.Icon,
-		StackableType:  item.StackableType,
-		Description:    item.Description,
-		ExplainPreview: previewText(item.Explain),
+		ID:               item.ID,
+		Name:             item.Name,
+		Type:             "stackable",
+		TypeName:         "道具",
+		Rarity:           item.Rarity,
+		RarityName:       item.RarityName,
+		AttachType:       item.AttachType,
+		MinimumLevel:     item.MinimumLevel,
+		StackLimit:       item.StackLimit,
+		UsableJobs:       item.UsableJobs,
+		Icon:             item.Icon,
+		IconURL:          iconURL(item.Icon),
+		PVFPath:          item.PVFPath,
+		StackableType:    item.StackableType,
+		StackableTypeTag: item.StackableTypeTag,
+		Description:      item.Description,
+		ExplainPreview:   previewText(item.Explain),
 	}
+}
+
+func iconURL(icon *dnfparser.ItemIcon) string {
+	if icon == nil || strings.TrimSpace(icon.Path) == "" {
+		return ""
+	}
+	return "/api/items/icon?path=" + url.QueryEscape(icon.Path) + "&index=" + strconv.Itoa(icon.Index)
 }
 
 func previewText(text string) string {
