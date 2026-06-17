@@ -330,47 +330,52 @@
                   <input name="characNo" type="number" inputmode="numeric" required placeholder="charac_no">
                 </label>
                 <label class="field">
+                  <span>操作</span>
+                  <select name="action">
+                    <option value="rename">改名</option>
+                    <option value="level">改等级</option>
+                    <option value="job">改职业</option>
+                    <option value="move">移动角色</option>
+                    <option value="delete">删除角色</option>
+                    <option value="recover">恢复角色</option>
+                    <option value="ban">封号</option>
+                    <option value="unban">解封</option>
+                  </select>
+                </label>
+                <label class="field" data-advanced-field="name">
                   <span>新角色名</span>
                   <input name="name" type="text" placeholder="改名">
                 </label>
-                <label class="field">
+                <label class="field" data-advanced-field="level">
                   <span>等级</span>
                   <input name="level" type="number" inputmode="numeric" min="1" placeholder="升级/降级">
                 </label>
-                <label class="field">
-                  <span>基础职业 job</span>
+                <label class="field" data-advanced-field="job">
+                  <span>基础职业</span>
                   <input name="job" type="number" inputmode="numeric" list="job-options" placeholder="可空">
                 </label>
-                <label class="field">
-                  <span>转职 grow_type</span>
+                <label class="field" data-advanced-field="growType">
+                  <span>转职分支</span>
                   <input name="growType" type="number" inputmode="numeric" list="grow-type-options" placeholder="可空">
                 </label>
-                <label class="field">
-                  <span>副职业 expert_job</span>
+                <label class="field" data-advanced-field="expertJob">
+                  <span>副职业</span>
                   <input name="expertJob" type="number" inputmode="numeric" list="expert-job-options" placeholder="可空">
                 </label>
-                <label class="field">
+                <label class="field" data-advanced-field="moveUid">
                   <span>移动到账号 UID</span>
                   <input name="moveUid" type="number" inputmode="numeric" placeholder="目标 m_id">
                 </label>
-                <label class="field">
+                <label class="field" data-advanced-field="banDays">
                   <span>封号天数</span>
                   <input name="banDays" type="number" inputmode="numeric" value="365">
                 </label>
-                <label class="field span-2">
+                <label class="field span-2" data-advanced-field="banReason">
                   <span>封号原因</span>
                   <input name="banReason" type="text" placeholder="可空">
                 </label>
-                <div class="form-actions span-2 advanced-actions">
-                  <button class="btn secondary" type="button" data-advanced-action="rename">改名</button>
-                  <button class="btn secondary" type="button" data-advanced-action="level">改等级</button>
-                  <button class="btn secondary" type="button" data-advanced-action="job">改职业</button>
-                  <button class="btn secondary" type="button" data-advanced-action="move">移动角色</button>
-                  <button class="btn danger" type="button" data-advanced-action="delete">删除</button>
-                  <button class="btn secondary" type="button" data-advanced-action="recover">恢复</button>
-                  <button class="btn danger" type="button" data-advanced-action="ban">封号</button>
-                  <button class="btn secondary" type="button" data-advanced-action="unban">解封</button>
-                  <button class="btn secondary" type="button" data-advanced-action="reset-create-limit">重置建角限制</button>
+                <div class="form-actions span-2">
+                  <button class="btn primary" type="submit" id="advanced-save-button">保存</button>
                 </div>
               </form>
               <datalist id="job-options">

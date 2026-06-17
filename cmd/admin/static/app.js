@@ -4,6 +4,7 @@ const state = {
   characters: { page: 1, pageSize: 20, total: 0, items: [] },
   mail: { page: 1, pageSize: 20, hasMore: false, items: [] },
   items: { page: 1, pageSize: 40, total: 0, items: [], facetsLoaded: false, category: "all" },
+  itemDetailRequest: 0,
   resources: null,
   selectedCharacter: null
 };
@@ -99,32 +100,46 @@ const itemCategories = [
   { key: "all", label: "全部物品", filters: { type: "all" } },
   { key: "equipment_all", label: "全部装备", filters: { type: "equipment" } },
   { key: "stackable_all", label: "全部道具", filters: { type: "stackable" } },
-  { key: "weapon", label: "武器", filters: { type: "equipment", equipmentType: "weapon" } },
-  { key: "titleName", label: "称号", filters: { type: "equipment", equipmentType: "titleName" } },
-  { key: "coat", label: "上衣", filters: { type: "equipment", equipmentType: "coat" } },
-  { key: "shoulder", label: "护肩", filters: { type: "equipment", equipmentType: "shoulder" } },
-  { key: "pants", label: "裤子", filters: { type: "equipment", equipmentType: "pants" } },
-  { key: "shoes", label: "鞋子", filters: { type: "equipment", equipmentType: "shoes" } },
-  { key: "waist", label: "腰带", filters: { type: "equipment", equipmentType: "waist" } },
-  { key: "amulet", label: "项链", filters: { type: "equipment", equipmentType: "amulet" } },
-  { key: "wrist", label: "手镯", filters: { type: "equipment", equipmentType: "wrist" } },
-  { key: "ring", label: "戒指", filters: { type: "equipment", equipmentType: "ring" } },
-  { key: "support", label: "辅助装备", filters: { type: "equipment", equipmentType: "support" } },
-  { key: "magicStone", label: "魔法石", filters: { type: "equipment", equipmentType: "magicStone" } },
-  { key: "creature_equipment", label: "宠物装备/宠物", filters: { type: "equipment", equipmentType: "creature" } },
+  { key: "weapon", label: "武器", filters: { type: "equipment", equipmentType: "武器" } },
+  { key: "titleName", label: "称号", filters: { type: "equipment", equipmentType: "称号" } },
+  { key: "coat", label: "上衣", filters: { type: "equipment", equipmentType: "上衣" } },
+  { key: "shoulder", label: "护肩", filters: { type: "equipment", equipmentType: "护肩" } },
+  { key: "pants", label: "裤子", filters: { type: "equipment", equipmentType: "裤子" } },
+  { key: "shoes", label: "鞋子", filters: { type: "equipment", equipmentType: "鞋子" } },
+  { key: "waist", label: "腰带", filters: { type: "equipment", equipmentType: "腰带" } },
+  { key: "amulet", label: "项链", filters: { type: "equipment", equipmentType: "项链" } },
+  { key: "wrist", label: "手镯", filters: { type: "equipment", equipmentType: "手镯" } },
+  { key: "ring", label: "戒指", filters: { type: "equipment", equipmentType: "戒指" } },
+  { key: "support", label: "辅助装备", filters: { type: "equipment", equipmentType: "辅助装备" } },
+  { key: "magicStone", label: "魔法石", filters: { type: "equipment", equipmentType: "魔法石" } },
+  { key: "creature_equipment", label: "宠物", filters: { type: "equipment", equipmentType: "宠物" } },
+  { key: "artifact_red", label: "宠物装备-红色", filters: { type: "equipment", equipmentType: "宠物装备-红色" } },
+  { key: "artifact_green", label: "宠物装备-绿色", filters: { type: "equipment", equipmentType: "宠物装备-绿色" } },
+  { key: "artifact_blue", label: "宠物装备-蓝色", filters: { type: "equipment", equipmentType: "宠物装备-蓝色" } },
   { key: "avatar", label: "时装", filters: { type: "equipment", avatar: "true" } },
-  { key: "waste", label: "消耗品", filters: { type: "stackable", stackableType: "waste" } },
-  { key: "material", label: "材料", filters: { type: "stackable", stackableType: "material" } },
-  { key: "recipe", label: "设计图", filters: { type: "stackable", stackableType: "recipe" } },
-  { key: "material_expert_job", label: "副职业", filters: { type: "stackable", stackableType: "material_expert_job" } },
-  { key: "quest", label: "任务道具", filters: { type: "stackable", stackableType: "quest" } },
-  { key: "booster", label: "礼盒", filters: { type: "stackable", stackableType: "booster" } },
-  { key: "feed", label: "饲料", filters: { type: "stackable", stackableType: "feed" } },
-  { key: "creature_stackable", label: "宠物道具", filters: { type: "stackable", stackableType: "creature" } },
-  { key: "throwItem", label: "投掷物", filters: { type: "stackable", stackableType: "throwItem" } },
-  { key: "legacy", label: "罐子", filters: { type: "stackable", stackableType: "legacy" } },
-  { key: "etc", label: "杂物", filters: { type: "stackable", stackableType: "etc" } }
+  { key: "waste", label: "消耗品", filters: { type: "stackable", stackableType: "消耗品" } },
+  { key: "material", label: "材料", filters: { type: "stackable", stackableType: "材料" } },
+  { key: "recipe", label: "设计图", filters: { type: "stackable", stackableType: "设计图" } },
+  { key: "material_expert_job", label: "副职业", filters: { type: "stackable", stackableType: "副职业" } },
+  { key: "quest", label: "任务道具", filters: { type: "stackable", stackableType: "任务道具" } },
+  { key: "booster", label: "礼盒", filters: { type: "stackable", stackableType: "礼盒" } },
+  { key: "feed", label: "饲料", filters: { type: "stackable", stackableType: "饲料" } },
+  { key: "creature_stackable", label: "宠物道具", filters: { type: "stackable", stackableType: "宠物" } },
+  { key: "throwItem", label: "投掷物", filters: { type: "stackable", stackableType: "投掷物" } },
+  { key: "legacy", label: "罐子", filters: { type: "stackable", stackableType: "罐子" } },
+  { key: "etc", label: "杂物", filters: { type: "stackable", stackableType: "杂物" } }
 ];
+
+const advancedActions = {
+  rename: { label: "改名", fields: ["name"] },
+  level: { label: "改等级", fields: ["level"] },
+  job: { label: "改职业", fields: ["job", "growType", "expertJob"] },
+  move: { label: "移动角色", fields: ["moveUid"], confirm: true },
+  delete: { label: "删除角色", fields: [], confirm: true },
+  recover: { label: "恢复角色", fields: [], confirm: true },
+  ban: { label: "封号", fields: ["banDays", "banReason"], confirm: true },
+  unban: { label: "解封", fields: [], confirm: true }
+};
 
 const commonItemKeys = new Set([
   "id",
@@ -218,13 +233,15 @@ function bindCharacters() {
 }
 
 function bindOperations() {
+  updateAdvancedActionFields();
   $("#resource-query-form").addEventListener("submit", (event) => {
     event.preventDefault();
     loadResources();
   });
   $("#resource-patch-form").addEventListener("submit", patchResource);
   $("#refresh-operations").addEventListener("click", loadResources);
-  $("#advanced-character-form").addEventListener("click", handleAdvancedAction);
+  $("#advanced-character-form [name='action']").addEventListener("change", updateAdvancedActionFields);
+  $("#advanced-character-form").addEventListener("submit", saveAdvancedCharacter);
   $("#pvp-form").addEventListener("submit", savePVP);
 }
 
@@ -267,6 +284,8 @@ function bindItems() {
   $("#item-filter").addEventListener("submit", (event) => {
     event.preventDefault();
     state.items.page = 1;
+    syncItemCategoryFromFilters();
+    renderItemCategoryBrowser();
     loadItems();
   });
   $("#reset-item-filter").addEventListener("click", () => {
@@ -278,7 +297,25 @@ function bindItems() {
     loadItems();
   });
   $("#refresh-items").addEventListener("click", reloadItems);
-  $("#item-type").addEventListener("change", updateItemFilterAvailability);
+  $("#item-type").addEventListener("change", () => {
+    updateItemFilterAvailability();
+    syncItemCategoryFromFilters();
+    renderItemCategoryBrowser();
+  });
+  ["#equipment-type-select", "#item-group-select", "#item-filter [name='avatar']"].forEach((selector) => {
+    $(selector).addEventListener("change", () => {
+      if ($(selector).value) $("#item-type").value = "equipment";
+      updateItemFilterAvailability();
+      syncItemCategoryFromFilters();
+      renderItemCategoryBrowser();
+    });
+  });
+  $("#stackable-type-select").addEventListener("change", () => {
+    if ($("#stackable-type-select").value) $("#item-type").value = "stackable";
+    updateItemFilterAvailability();
+    syncItemCategoryFromFilters();
+    renderItemCategoryBrowser();
+  });
   $("#item-category-browser").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-category]");
     if (!button) return;
@@ -489,7 +526,11 @@ function fillOperations(character) {
   $("#resource-query-form [name='characName']").value = character.characName || "";
   $("#resource-query-form [name='uid']").value = String(character.mid);
   $("#resource-query-form [name='characNo']").value = String(character.characNo);
-  $("#advanced-character-form [name='characNo']").value = String(character.characNo);
+  const advancedForm = $("#advanced-character-form");
+  advancedForm.elements.characNo.value = String(character.characNo);
+  advancedForm.elements.action.value = "rename";
+  advancedForm.elements.name.value = character.characName || "";
+  updateAdvancedActionFields();
   $("#pvp-form [name='characNo']").value = String(character.characNo);
   setView("operations");
   loadResources();
@@ -498,6 +539,7 @@ function fillOperations(character) {
 function fillAdvancedCharacter(character) {
   const form = $("#advanced-character-form");
   form.elements.characNo.value = String(character.characNo);
+  form.elements.action.value = "rename";
   form.elements.name.value = character.characName || "";
   form.elements.level.value = character.lev ?? "";
   form.elements.job.value = character.job ?? "";
@@ -508,6 +550,7 @@ function fillAdvancedCharacter(character) {
   $("#resource-query-form [name='uid']").value = String(character.mid);
   $("#resource-query-form [name='characNo']").value = String(character.characNo);
   $("#pvp-form [name='characNo']").value = String(character.characNo);
+  updateAdvancedActionFields();
   setView("operations");
   loadResources();
 }
@@ -534,6 +577,7 @@ async function loadResources() {
       form.elements.characNo.value = String(data.characNo);
       form.elements.characName.value = data.characName || form.elements.characName.value;
       $("#advanced-character-form [name='characNo']").value = String(data.characNo);
+      if (data.characName) $("#advanced-character-form [name='name']").value = data.characName;
       $("#pvp-form [name='characNo']").value = String(data.characNo);
     }
     renderResources(data);
@@ -602,11 +646,30 @@ async function patchResource(event) {
   }
 }
 
-async function handleAdvancedAction(event) {
-  const button = event.target.closest("button[data-advanced-action]");
-  if (!button) return;
-  const action = button.dataset.advancedAction;
+function updateAdvancedActionFields() {
   const form = $("#advanced-character-form");
+  if (!form) return;
+  const action = form.elements.action.value;
+  const config = advancedActions[action] || advancedActions.rename;
+  const enabled = new Set(config.fields || []);
+  $$("[data-advanced-field]").forEach((field) => {
+    const name = field.dataset.advancedField;
+    const visible = enabled.has(name);
+    field.classList.toggle("hidden-field", !visible);
+    const input = field.querySelector("input, select, textarea");
+    if (input) input.disabled = !visible;
+  });
+  const button = $("#advanced-save-button");
+  button.textContent = `保存${config.label}`;
+  button.classList.toggle("danger", Boolean(config.confirm && (action === "delete" || action === "ban")));
+  button.classList.toggle("primary", !(config.confirm && (action === "delete" || action === "ban")));
+}
+
+async function saveAdvancedCharacter(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const action = form.elements.action.value;
+  const config = advancedActions[action] || advancedActions.rename;
   const characNo = numberOrZero(form.elements.characNo.value);
   if (!characNo) {
     showToast("角色 ID 不能为空", "err");
@@ -639,14 +702,13 @@ async function handleAdvancedAction(event) {
       reason: form.elements.banReason.value.trim()
     };
   }
-  const confirmActions = new Set(["delete", "recover", "move", "ban", "unban", "reset-create-limit"]);
-  if (confirmActions.has(action) && !confirm(`确定执行 ${button.textContent.trim()} 吗？`)) return;
+  if (config.confirm && !confirm(`确定执行 ${config.label} 吗？`)) return;
   try {
     await api(`/api/characters/${characNo}/${action}`, {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    showToast("角色操作已完成", "ok");
+    showToast(`${config.label}已保存`, "ok");
     loadCharacters();
     loadResources();
   } catch (error) {
@@ -867,7 +929,7 @@ function renderItemCategoryBrowser() {
   if (!target) return;
   const groups = [
     ["总览", ["all", "equipment_all", "stackable_all"]],
-    ["装备", ["weapon", "titleName", "coat", "shoulder", "pants", "shoes", "waist", "amulet", "wrist", "ring", "support", "magicStone", "creature_equipment", "avatar"]],
+    ["装备", ["weapon", "titleName", "coat", "shoulder", "pants", "shoes", "waist", "amulet", "wrist", "ring", "support", "magicStone", "creature_equipment", "artifact_red", "artifact_green", "artifact_blue", "avatar"]],
     ["道具", ["waste", "material", "recipe", "material_expert_job", "quest", "booster", "feed", "creature_stackable", "throwItem", "legacy", "etc"]]
   ];
   const byKey = new Map(itemCategories.map((item) => [item.key, item]));
@@ -884,8 +946,8 @@ function renderItemCategoryBrowser() {
       </div>
     </div>
   `).join("");
-  const current = byKey.get(state.items.category || "all") || byKey.get("all");
-  $("#item-browser-current").textContent = current ? current.label : "全部分类";
+  const current = byKey.get(state.items.category || "all");
+  $("#item-browser-current").textContent = current ? current.label : "自定义筛选";
 }
 
 function applyItemCategory(key) {
@@ -894,6 +956,7 @@ function applyItemCategory(key) {
   form.reset();
   for (const [name, value] of Object.entries(category.filters)) {
     if (form.elements[name]) {
+      ensureSelectOption(form.elements[name], value);
       form.elements[name].value = value;
     }
   }
@@ -902,6 +965,33 @@ function applyItemCategory(key) {
   updateItemFilterAvailability();
   renderItemCategoryBrowser();
   loadItems();
+}
+
+function syncItemCategoryFromFilters() {
+  const form = $("#item-filter");
+  const filters = {
+    type: form.elements.type.value || "all",
+    equipmentType: form.elements.equipmentType.value,
+    itemGroup: form.elements.itemGroup.value,
+    stackableType: form.elements.stackableType.value,
+    avatar: form.elements.avatar.value
+  };
+  const matched = itemCategories.find((category) => categoryFiltersMatch(category.filters, filters));
+  state.items.category = matched ? matched.key : "custom";
+}
+
+function categoryFiltersMatch(categoryFilters, filters) {
+  const keys = ["type", "equipmentType", "itemGroup", "stackableType", "avatar"];
+  return keys.every((key) => (categoryFilters[key] || "") === (filters[key] || ""));
+}
+
+function ensureSelectOption(element, value) {
+  if (!value || element.tagName !== "SELECT") return;
+  if (Array.from(element.options).some((option) => option.value === value)) return;
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = value;
+  element.appendChild(option);
 }
 
 function renderItems() {
@@ -942,13 +1032,41 @@ function renderItems() {
 }
 
 async function openItemDrawer(type, id) {
+  const requestId = ++state.itemDetailRequest;
+  renderItemDetailLoading(type, id);
+  openDrawer("#item-drawer");
   try {
     const item = await api(`/api/items/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+    if (requestId !== state.itemDetailRequest) return;
     renderItemDetail(item);
-    openDrawer("#item-drawer");
   } catch (error) {
+    if (requestId !== state.itemDetailRequest) return;
+    renderItemDetailError(type, id, error);
     showToast(error.message, "err");
   }
+}
+
+function renderItemDetailLoading(type, id) {
+  $("#item-drawer-title").textContent = "物品详情";
+  $("#item-drawer-subtitle").textContent = `ID ${id} · ${typeName(type)}`;
+  $("#item-detail").innerHTML = `
+    <div class="muted-panel detail-loading">
+      <span class="loader"></span>
+      <strong>正在读取物品详情</strong>
+      <span>包含 PVF 原始文本和字段，可能需要等待片刻。</span>
+    </div>
+  `;
+}
+
+function renderItemDetailError(type, id, error) {
+  $("#item-drawer-title").textContent = "物品详情";
+  $("#item-drawer-subtitle").textContent = `ID ${id} · ${typeName(type)}`;
+  $("#item-detail").innerHTML = `
+    <div class="muted-panel detail-loading error">
+      <strong>读取失败</strong>
+      <span>${escapeHTML(error.message)}</span>
+    </div>
+  `;
 }
 
 function renderItemDetail(item) {
@@ -1033,7 +1151,13 @@ function fillSelect(selector, values, getValue = (item) => item, getLabel = (ite
     option.textContent = getLabel(item);
     select.appendChild(option);
   });
-  if (Array.from(select.options).some((option) => option.value === previous)) {
+  if (previous && !Array.from(select.options).some((option) => option.value === previous)) {
+    const option = document.createElement("option");
+    option.value = previous;
+    option.textContent = previous;
+    select.appendChild(option);
+  }
+  if (previous) {
     select.value = previous;
   }
 }

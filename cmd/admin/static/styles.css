@@ -546,8 +546,8 @@ textarea:focus {
   grid-column: 1 / -1;
 }
 
-.advanced-actions {
-  align-items: stretch;
+.hidden-field {
+  display: none;
 }
 
 .panel {
@@ -720,6 +720,33 @@ textarea:focus {
 .item-detail {
   display: grid;
   gap: 14px;
+}
+
+.detail-loading {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.detail-loading.error {
+  color: var(--danger);
+}
+
+.loader {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .item-detail-head {
