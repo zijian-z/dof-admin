@@ -866,15 +866,16 @@ func (s *server) handleItems(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	filter := itemFilter{
-		Kind:          strings.TrimSpace(q.Get("type")),
-		Keyword:       strings.TrimSpace(q.Get("q")),
-		Rarity:        optionalInt(q.Get("rarity")),
-		MinLevel:      optionalInt(q.Get("minLevel")),
-		MaxLevel:      optionalInt(q.Get("maxLevel")),
-		EquipmentType: strings.TrimSpace(q.Get("equipmentType")),
-		ItemGroup:     strings.TrimSpace(q.Get("itemGroup")),
-		StackableType: strings.TrimSpace(q.Get("stackableType")),
-		Avatar:        optionalBool(q.Get("avatar")),
+		Kind:                strings.TrimSpace(q.Get("type")),
+		Keyword:             strings.TrimSpace(q.Get("q")),
+		Rarity:              optionalInt(q.Get("rarity")),
+		MinLevel:            optionalInt(q.Get("minLevel")),
+		MaxLevel:            optionalInt(q.Get("maxLevel")),
+		EquipmentType:       strings.TrimSpace(q.Get("equipmentType")),
+		ItemGroup:           strings.TrimSpace(q.Get("itemGroup")),
+		StackableType:       strings.TrimSpace(q.Get("stackableType")),
+		Avatar:              optionalBool(q.Get("avatar")),
+		ExcludeOldEquipment: boolValue(q.Get("excludeOldEquipment")),
 	}
 	if filter.Kind == "" {
 		filter.Kind = "all"
@@ -1157,15 +1158,16 @@ func (s *server) loadExpTable() []int64 {
 }
 
 type itemFilter struct {
-	Kind          string
-	Keyword       string
-	Rarity        *int
-	MinLevel      *int
-	MaxLevel      *int
-	EquipmentType string
-	ItemGroup     string
-	StackableType string
-	Avatar        *bool
+	Kind                string
+	Keyword             string
+	Rarity              *int
+	MinLevel            *int
+	MaxLevel            *int
+	EquipmentType       string
+	ItemGroup           string
+	StackableType       string
+	Avatar              *bool
+	ExcludeOldEquipment bool
 }
 
 func (s *server) queryItems(f itemFilter, page, pageSize int) ([]itemSummary, int, itemFacets, time.Time) {
@@ -1202,6 +1204,9 @@ func (s *server) queryItems(f itemFilter, page, pageSize int) ([]itemSummary, in
 
 func matchesEquipment(item *dnfparser.Equipment, f itemFilter) bool {
 	if !matchesCommon(item.ID, item.Name, item.Rarity, item.MinimumLevel, f) {
+		return false
+	}
+	if f.ExcludeOldEquipment && isOldEquipmentName(item.Name) {
 		return false
 	}
 	if f.EquipmentType != "" && !matchesFacet(f.EquipmentType, item.EquipmentType, item.EquipmentTypeTag) {
@@ -1314,6 +1319,11 @@ func matchesCommon(id int, name string, rarity int, minimumLevel int, f itemFilt
 		return false
 	}
 	return true
+}
+
+func isOldEquipmentName(name string) bool {
+	name = strings.TrimSpace(name)
+	return strings.HasPrefix(name, "(旧)") || strings.HasPrefix(name, "（旧）")
 }
 
 func equipmentSummary(item *dnfparser.Equipment) itemSummary {
@@ -1462,6 +1472,11 @@ func optionalBool(raw string) *bool {
 	}
 	v := raw == "1" || raw == "true" || raw == "yes"
 	return &v
+}
+
+func boolValue(raw string) bool {
+	v := optionalBool(raw)
+	return v != nil && *v
 }
 
 func optionalTime(raw string) (*time.Time, error) {
