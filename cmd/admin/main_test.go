@@ -2,6 +2,8 @@ package main
 
 import (
 	dnfparser "dofadmin"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,5 +49,22 @@ func TestMatchesEquipmentExcludeOldEquipment(t *testing.T) {
 	}
 	if matchesEquipment(fullWidthOldItem, itemFilter{ExcludeOldEquipment: true}) {
 		t.Fatal("full-width old equipment marker should be excluded")
+	}
+}
+
+func TestHandleStaticFaviconICO(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	rec := httptest.NewRecorder()
+
+	(&server{}).handleStatic(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/x-icon" {
+		t.Fatalf("Content-Type = %q, want %q", got, "image/x-icon")
+	}
+	if body := rec.Body.String(); len(body) == 0 || body[0] == '<' {
+		t.Fatalf("favicon response looks like HTML fallback: len=%d", len(body))
 	}
 }

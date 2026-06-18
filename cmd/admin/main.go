@@ -1065,6 +1065,14 @@ func (s *server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(name, ".html") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	}
+	switch name {
+	case "favicon.ico":
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+	case "favicon.svg":
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+	}
 	http.ServeContent(w, r, name, time.Time{}, strings.NewReader(string(data)))
 }
 

@@ -397,6 +397,7 @@ function bindMail() {
     state.mail.page = 1;
     loadMail();
   });
+  $("#clear-character-mail").addEventListener("click", clearCharacterMail);
   $("#mail-prev").addEventListener("click", () => {
     if (state.mail.page > 1) {
       state.mail.page -= 1;
@@ -1056,6 +1057,25 @@ async function deleteMail(id) {
   try {
     await api(`/api/mail/${encodeURIComponent(id)}`, { method: "DELETE" });
     showToast("邮件已删除", "ok");
+    loadMail();
+  } catch (error) {
+    showToast(error.message, "err");
+  }
+}
+
+async function clearCharacterMail() {
+  const input = $("#mail-filter [name='receiveCharacNo']");
+  const receiveCharacNo = input.value.trim();
+  if (!receiveCharacNo) {
+    showToast("请先填写收件角色 ID", "err");
+    input.focus();
+    return;
+  }
+  if (!confirm(`确定清空角色 ${receiveCharacNo} 的全部未删除邮件吗？`)) return;
+  try {
+    await api(`/api/mail/character/${encodeURIComponent(receiveCharacNo)}`, { method: "DELETE" });
+    state.mail.page = 1;
+    showToast(`角色 ${receiveCharacNo} 的邮件已清空`, "ok");
     loadMail();
   } catch (error) {
     showToast(error.message, "err");
