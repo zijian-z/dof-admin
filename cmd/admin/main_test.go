@@ -52,6 +52,18 @@ func TestMatchesEquipmentExcludeOldEquipment(t *testing.T) {
 	}
 }
 
+func TestMatchesCommonSimplifiedKeywordMatchesTraditionalName(t *testing.T) {
+	if !matchesCommon(1, "金幣", 0, 0, itemFilter{Keyword: "金币"}) {
+		t.Fatal("simplified keyword should match traditional item name")
+	}
+	if !matchesCommon(1, "復活幣", 0, 0, itemFilter{Keyword: "复活币"}) {
+		t.Fatal("simplified keyword should match traditional multi-character item name")
+	}
+	if !matchesCommon(1001, "金幣", 0, 0, itemFilter{Keyword: "1001"}) {
+		t.Fatal("numeric id keyword should still match item id")
+	}
+}
+
 func TestHandleStaticFaviconICO(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
 	rec := httptest.NewRecorder()

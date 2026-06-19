@@ -20,6 +20,7 @@ import (
 
 	dnfparser "dofadmin"
 	"github.com/joho/godotenv"
+	"github.com/longbridgeapp/opencc"
 )
 
 //go:embed static/*
@@ -52,6 +53,9 @@ var (
 	version   = "dev"
 	commit    = "none"
 	buildTime = "unknown"
+
+	traditionalToSimplified, traditionalToSimplifiedErr = opencc.New("t2s")
+	itemSearchTextCache                                 sync.Map
 )
 
 type itemCache struct {
@@ -1364,8 +1368,9 @@ func tagAlias(tag string) string {
 
 func matchesCommon(id int, name string, rarity int, minimumLevel int, f itemFilter) bool {
 	if f.Keyword != "" {
-		keyword := strings.ToLower(f.Keyword)
-		if !strings.Contains(strings.ToLower(name), keyword) && !strings.Contains(strconv.Itoa(id), keyword) {
+		keyword := normalizeItemSearchText(f.Keyword)
+		nameText := normalizeItemSearchText(name)
+		if !strings.Contains(nameText, keyword) && !strings.Contains(strconv.Itoa(id), keyword) {
 			return false
 		}
 	}
@@ -1379,6 +1384,29 @@ func matchesCommon(id int, name string, rarity int, minimumLevel int, f itemFilt
 		return false
 	}
 	return true
+}
+
+func normalizeItemSearchText(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return s
+	}
+	if cached, ok := itemSearchTextCache.Load(s); ok {
+		return cached.(string)
+	}
+	normalized := s
+	defer func() {
+		itemSearchTextCache.Store(s, normalized)
+	}()
+	if traditionalToSimplifiedErr != nil {
+		return normalized
+	}
+	converted, err := traditionalToSimplified.Convert(s)
+	if err != nil {
+		return normalized
+	}
+	normalized = strings.ToLower(converted)
+	return normalized
 }
 
 func isOldEquipmentName(name string) bool {
