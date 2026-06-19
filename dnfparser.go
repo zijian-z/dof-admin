@@ -1386,8 +1386,12 @@ func (n *Npk) readNpkCache(path string) error {
 		return err
 	}
 	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
 
-	tables, err := readImgTables(f)
+	tables, err := readImgTables(f, stat.Size())
 	if err != nil {
 		return err
 	}
@@ -1416,18 +1420,26 @@ func (n *Npk) registerImgTable(name string, npkFile string, table NpkImgTable) {
 	n.indexTab[name] = table
 }
 
-func readImgTables(r io.Reader) ([]NpkImgTable, error) {
+func readImgTables(r io.Reader, fileSize int64) ([]NpkImgTable, error) {
 	sr := newStreamReader(r)
 	magic, err := sr.readN(npkMagicLen)
 	if err != nil {
 		return nil, err
 	}
-	_ = strings.TrimRight(string(magic), "\x00")
+	magicText := strings.TrimRight(string(magic), "\x00")
+	if magicText != npkMagicNumber {
+		return nil, nil
+	}
 	// 注：原 Java 在魔数相等时反而打印 error（疑似笔误），此处不做强校验，保持兼容。
 
 	imgSize, err := sr.readInt()
 	if err != nil {
 		return nil, err
+	}
+	const imgTableEntryLen = 4 + 4 + npkImgNameLen
+	maxImgSize := (fileSize - npkMagicLen - 4) / imgTableEntryLen
+	if imgSize < 0 || int64(imgSize) > maxImgSize {
+		return nil, fmt.Errorf("invalid npk img table size: %d (max %d)", imgSize, maxImgSize)
 	}
 	tables := make([]NpkImgTable, 0, imgSize)
 	for i := int32(0); i < imgSize; i++ {
