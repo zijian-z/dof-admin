@@ -241,7 +241,8 @@ type pvfHeader struct {
 
 // Pvf 对应 Java Pvf，是 PVF 解析的核心入口对象。
 type Pvf struct {
-	data        []byte
+	file        *os.File
+	fileSize    int64
 	contentBase int // 目录树之后的内容区起始偏移（对应 Java buffer.mark() 的位置）
 	header      *pvfHeader
 	treeDict    map[string][]*PvfFile // key 为目录前缀（小写），大小写不敏感匹配
@@ -257,26 +258,44 @@ func OpenPvf(path string) (*Pvf, error) {
 
 // OpenPvfWithCharset 打开并初始化一个 PVF 文件，charset 支持 big5 / gbk / gb18030 / utf-8。
 func OpenPvfWithCharset(path string, charset string) (*Pvf, error) {
-	raw, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
+	stat, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
 	p := &Pvf{
-		data:     raw,
+		file:     f,
+		fileSize: stat.Size(),
 		treeDict: make(map[string][]*PvfFile),
 		charset:  charset,
 	}
 	if err := p.loadHeader(); err != nil {
+		_ = p.Close()
 		return nil, err
 	}
 	p.loadTree()
 	if err := p.loadStringTable(); err != nil {
+		_ = p.Close()
 		return nil, err
 	}
 	if err := p.loadNString(); err != nil {
+		_ = p.Close()
 		return nil, err
 	}
 	return p, nil
+}
+
+func (p *Pvf) Close() error {
+	if p == nil || p.file == nil {
+		return nil
+	}
+	err := p.file.Close()
+	p.file = nil
+	return err
 }
 
 func (p *Pvf) decodeText(b []byte) string {
@@ -284,22 +303,55 @@ func (p *Pvf) decodeText(b []byte) string {
 }
 
 func (p *Pvf) loadHeader() error {
-	r := newReader(p.data)
+	if p.file == nil {
+		return errors.New("PVF file is closed")
+	}
+	if _, err := p.file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	r := newStreamReader(p.file)
 	h := &pvfHeader{}
-	h.guidLength = r.readInt()
-	h.guid = string(r.readBytes(int(h.guidLength)))
-	h.version = r.readInt()
-	h.treeLength = r.readInt()
-	h.treeCRC32 = r.readInt()
-	h.treeCount = r.readInt()
+	var err error
+	if h.guidLength, err = r.readInt(); err != nil {
+		return err
+	}
+	if h.guidLength < 0 || int64(h.guidLength) > p.fileSize {
+		return fmt.Errorf("invalid PVF guid length: %d", h.guidLength)
+	}
+	guidBytes, err := r.readN(int(h.guidLength))
+	if err != nil {
+		return err
+	}
+	h.guid = string(guidBytes)
+	if h.version, err = r.readInt(); err != nil {
+		return err
+	}
+	if h.treeLength, err = r.readInt(); err != nil {
+		return err
+	}
+	if h.treeCRC32, err = r.readInt(); err != nil {
+		return err
+	}
+	if h.treeCount, err = r.readInt(); err != nil {
+		return err
+	}
+	if h.treeLength < 0 || int64(h.treeLength) > p.fileSize {
+		return fmt.Errorf("invalid PVF tree length: %d", h.treeLength)
+	}
 
 	treeBytes := make([]byte, h.treeLength)
-	copy(treeBytes, r.readBytes(int(h.treeLength)))
+	if _, err := io.ReadFull(p.file, treeBytes); err != nil {
+		return err
+	}
 	crcDecrypt(treeBytes, h.treeCRC32)
 	h.tree = newReader(treeBytes)
 
 	// Java 中 buffer.mark() 标记的位置：目录树之后即内容区起点。
-	p.contentBase = r.pos
+	pos, err := p.file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	p.contentBase = int(pos)
 	p.header = h
 	return nil
 }
@@ -398,9 +450,18 @@ func (p *Pvf) getTreeContent(path string) []byte {
 	if f == nil {
 		return nil
 	}
-	start := p.contentBase + int(f.Offset)
-	content := make([]byte, f.Length)
-	copy(content, p.data[start:start+int(f.Length)])
+	if p.file == nil || f.Offset < 0 || f.Length < 0 {
+		return nil
+	}
+	start := int64(p.contentBase) + int64(f.Offset)
+	end := start + int64(f.Length)
+	if start < 0 || end > p.fileSize {
+		return nil
+	}
+	content := make([]byte, int(f.Length))
+	if _, err := p.file.ReadAt(content, start); err != nil {
+		return nil
+	}
 	crcDecrypt(content, f.CRC32)
 	return content
 }

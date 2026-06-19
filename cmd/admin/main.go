@@ -33,6 +33,9 @@ type server struct {
 	pvfPath    string
 	pvfCharset string
 	items      itemCache
+	pvfMu      sync.Mutex
+	pvf        *dnfparser.Pvf
+	pvfErr     error
 
 	npkRoot string
 	npkMu   sync.Mutex
@@ -240,7 +243,7 @@ func main() {
 
 	s := &server{
 		pvfPath:    resolvePVFPath(),
-		pvfCharset: envDefault("DNF_PVF_CHARSET", "gb18030"),
+		pvfCharset: envDefault("DNF_PVF_CHARSET", "big5"),
 		npkRoot:    strings.TrimSpace(os.Getenv("DNF_NPK_ROOT")),
 	}
 	s.openGameDB()
@@ -909,7 +912,15 @@ func (s *server) handleReloadItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	equipment, stackables, facets, loadedAt, err := loadItems(s.pvfPath, s.pvfCharset)
+	s.resetPvf()
+	pvf, err := s.ensurePvf()
+	var equipment []*dnfparser.Equipment
+	var stackables []*dnfparser.Stackable
+	var facets itemFacets
+	var loadedAt time.Time
+	if err == nil {
+		equipment, stackables, facets, loadedAt, err = loadItemsFromPvf(pvf)
+	}
 	s.items.mu.Lock()
 	s.items.once = sync.Once{}
 	s.items.err = err
@@ -1003,7 +1014,7 @@ func (s *server) attachPVFDebug(item *dnfparser.Item) {
 	if strings.TrimSpace(item.PVFPath) == "" || strings.TrimSpace(s.pvfPath) == "" {
 		return
 	}
-	pvf, err := dnfparser.OpenPvfWithCharset(s.pvfPath, s.pvfCharset)
+	pvf, err := s.ensurePvf()
 	if err != nil {
 		item.PVFError = err.Error()
 		return
@@ -1094,7 +1105,14 @@ func (s *server) ensureItems() error {
 	}
 
 	s.items.once.Do(func() {
-		equipment, stackables, facets, loadedAt, err := loadItems(s.pvfPath, s.pvfCharset)
+		pvf, err := s.ensurePvf()
+		var equipment []*dnfparser.Equipment
+		var stackables []*dnfparser.Stackable
+		var facets itemFacets
+		var loadedAt time.Time
+		if err == nil {
+			equipment, stackables, facets, loadedAt, err = loadItemsFromPvf(pvf)
+		}
 		s.items.mu.Lock()
 		defer s.items.mu.Unlock()
 		s.items.err = err
@@ -1123,10 +1141,44 @@ func loadItems(pvfPath string, pvfCharset string) (equipment []*dnfparser.Equipm
 	if err != nil {
 		return nil, nil, itemFacets{}, time.Time{}, err
 	}
+	defer pvf.Close()
+	return loadItemsFromPvf(pvf)
+}
+
+func loadItemsFromPvf(pvf *dnfparser.Pvf) (equipment []*dnfparser.Equipment, stackables []*dnfparser.Stackable, facets itemFacets, loadedAt time.Time, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("load PVF items failed: %v", recovered)
+		}
+	}()
+
 	equipment = pvf.GetEquipmentList()
 	stackables = pvf.GetStackableList()
 	facets = buildFacets(equipment, stackables)
 	return equipment, stackables, facets, time.Now(), nil
+}
+
+func (s *server) ensurePvf() (*dnfparser.Pvf, error) {
+	if strings.TrimSpace(s.pvfPath) == "" {
+		return nil, errors.New("PVF is not configured; set DNF_PVF or place Script.pvf under the working directory")
+	}
+	s.pvfMu.Lock()
+	defer s.pvfMu.Unlock()
+	if s.pvf != nil || s.pvfErr != nil {
+		return s.pvf, s.pvfErr
+	}
+	s.pvf, s.pvfErr = dnfparser.OpenPvfWithCharset(s.pvfPath, s.pvfCharset)
+	return s.pvf, s.pvfErr
+}
+
+func (s *server) resetPvf() {
+	s.pvfMu.Lock()
+	defer s.pvfMu.Unlock()
+	if s.pvf != nil {
+		_ = s.pvf.Close()
+	}
+	s.pvf = nil
+	s.pvfErr = nil
 }
 
 func (s *server) ensureNpk() (*dnfparser.Npk, error) {
@@ -1147,7 +1199,7 @@ func (s *server) loadExpTable() []int64 {
 		return nil
 	}
 	s.expOnce.Do(func() {
-		pvf, err := dnfparser.OpenPvfWithCharset(s.pvfPath, s.pvfCharset)
+		pvf, err := s.ensurePvf()
 		s.expMu.Lock()
 		defer s.expMu.Unlock()
 		if err != nil {

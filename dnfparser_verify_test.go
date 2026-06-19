@@ -119,9 +119,9 @@ func TestVerifyExtractedScriptPVF(t *testing.T) {
 	}
 
 	for _, f := range files {
-		end := pvf.contentBase + int(f.Offset) + int(f.Length)
-		if int(f.Length) < 0 || int(f.Offset) < 0 || end > len(pvf.data) {
-			report.BoundsErrors = append(report.BoundsErrors, fmt.Sprintf("%s offset=%d length=%d end=%d data=%d", f.Path, f.Offset, f.Length, end, len(pvf.data)))
+		end := int64(pvf.contentBase) + int64(f.Offset) + int64(f.Length)
+		if f.Length < 0 || f.Offset < 0 || end > pvf.fileSize {
+			report.BoundsErrors = append(report.BoundsErrors, fmt.Sprintf("%s offset=%d length=%d end=%d data=%d", f.Path, f.Offset, f.Length, end, pvf.fileSize))
 		}
 	}
 
