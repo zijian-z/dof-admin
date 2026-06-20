@@ -5,6 +5,7 @@ const state = {
   mail: { page: 1, pageSize: 20, hasMore: false, items: [] },
   items: { page: 1, pageSize: 40, total: 0, items: [], facetsLoaded: false, category: "all" },
   itemDetailRequest: 0,
+  mailItemSearch: { timer: 0, request: 0, items: [] },
   resources: null,
   selectedCharacter: null
 };
@@ -383,6 +384,21 @@ function bindOperations() {
 
 function bindMail() {
   $("#mail-form").addEventListener("submit", sendMail);
+  const itemSearch = $("#mail-item-search");
+  if (itemSearch) {
+    itemSearch.addEventListener("input", handleMailItemSearchInput);
+    itemSearch.addEventListener("focus", () => {
+      if (state.mailItemSearch.items.length > 0) renderMailItemSearchResults(state.mailItemSearch.items);
+    });
+  }
+  $("#mail-item-results")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-mail-item-id]");
+    if (!button) return;
+    chooseMailSearchItem(button.dataset.mailItemId, button.dataset.mailItemName || "");
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".item-picker-field")) hideMailItemResults();
+  });
   $("#clear-mail-form").addEventListener("click", () => {
     $("#mail-form").reset();
     $("#mail-form [name='count']").value = "1";
@@ -391,6 +407,8 @@ function bindMail() {
     $("#mail-form [name='letterId']").value = "0";
     $("#mail-form [name='endurance']").value = "0";
     $("#mail-form [name='attachmentType']").value = "normal";
+    if ($("#mail-item-search")) $("#mail-item-search").value = "";
+    hideMailItemResults();
   });
   $("#mail-filter").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -984,6 +1002,78 @@ async function sendMail(event) {
   } catch (error) {
     showToast(error.message, "err");
   }
+}
+
+function handleMailItemSearchInput(event) {
+  const keyword = event.currentTarget.value.trim();
+  window.clearTimeout(state.mailItemSearch.timer);
+  if (keyword.length === 0) {
+    state.mailItemSearch.items = [];
+    hideMailItemResults();
+    return;
+  }
+  state.mailItemSearch.timer = window.setTimeout(() => searchMailItems(keyword), 220);
+}
+
+async function searchMailItems(keyword) {
+  const request = ++state.mailItemSearch.request;
+  const results = $("#mail-item-results");
+  if (!results) return;
+  results.classList.remove("hidden");
+  results.innerHTML = `<div class="item-picker-status">搜索中</div>`;
+  try {
+    const params = new URLSearchParams({
+      q: keyword,
+      type: "all",
+      page: "1",
+      pageSize: "12"
+    });
+    const data = await api(`/api/items?${params.toString()}`);
+    if (request !== state.mailItemSearch.request) return;
+    state.mailItemSearch.items = data.items || [];
+    renderMailItemSearchResults(state.mailItemSearch.items);
+  } catch (error) {
+    if (request !== state.mailItemSearch.request) return;
+    results.innerHTML = `<div class="item-picker-status">${escapeHTML(error.message)}</div>`;
+  }
+}
+
+function renderMailItemSearchResults(items) {
+  const results = $("#mail-item-results");
+  if (!results) return;
+  results.classList.remove("hidden");
+  if (items.length === 0) {
+    results.innerHTML = `<div class="item-picker-status">没有匹配物品</div>`;
+    return;
+  }
+  results.innerHTML = items.map((item) => `
+    <button class="item-picker-option" type="button" data-mail-item-id="${item.id}" data-mail-item-name="${escapeHTML(item.name || "")}">
+      ${renderIcon(item.icon)}
+      <span>
+        <strong>${escapeHTML(item.name || "")}</strong>
+        <small>ID ${item.id} · ${escapeHTML(item.equipmentType || item.stackableType || item.typeName || "")}</small>
+      </span>
+    </button>
+  `).join("");
+  bindIconFallbacks();
+}
+
+function chooseMailSearchItem(id, name) {
+  $("#mail-form [name='itemId']").value = String(id);
+  const search = $("#mail-item-search");
+  if (search) search.value = name ? `${name} (${id})` : String(id);
+  if (!$("#mail-form [name='count']").value) {
+    $("#mail-form [name='count']").value = "1";
+  }
+  hideMailItemResults();
+  showToast(`已选择物品 ID ${id}`, "ok");
+}
+
+function hideMailItemResults() {
+  const results = $("#mail-item-results");
+  if (!results) return;
+  results.classList.add("hidden");
+  results.innerHTML = "";
 }
 
 async function loadMail() {

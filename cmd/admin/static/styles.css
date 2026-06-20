@@ -478,6 +478,74 @@ textarea:focus {
   justify-content: flex-end;
 }
 
+.item-picker-field {
+  position: relative;
+  z-index: 5;
+}
+
+.item-picker-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 16px 42px rgba(31, 37, 30, 0.18);
+  padding: 6px;
+}
+
+.item-picker-results.hidden {
+  display: none;
+}
+
+.item-picker-option {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.item-picker-option:hover,
+.item-picker-option:focus {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.item-picker-option span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.item-picker-option strong,
+.item-picker-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-picker-option small,
+.item-picker-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.item-picker-status {
+  padding: 10px;
+}
+
 .mail-filter-form {
   grid-template-columns: minmax(180px, 1.2fr) repeat(2, minmax(180px, 1fr)) minmax(100px, 0.6fr) auto;
   margin-bottom: 12px;

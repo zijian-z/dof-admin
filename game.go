@@ -893,11 +893,16 @@ func (g *GameDB) GetAccountResources(uid int64, characNo int) (AccountResources,
 	out.AvatarCoin = g.scalarInt64("SELECT avatar_coin FROM `taiwan_cain_2nd`.`member_avatar_coin` WHERE m_id = ?", uid)
 	out.CreateLimitCount = g.scalarInt64("SELECT count FROM `d_taiwan`.`limit_create_character` WHERE m_id = ?", uid)
 	if characNo > 0 {
-		out.CharacMoney = g.scalarInt64("SELECT money FROM `taiwan_cain_2nd`.`inventory` WHERE charac_no = ?", characNo)
-		out.PayCoin = g.scalarInt64("SELECT pay_coin FROM `taiwan_cain_2nd`.`inventory` WHERE charac_no = ?", characNo)
+		out.CharacMoney = g.scalarInt64Any([]string{
+			"SELECT money FROM `taiwan_cain_2nd`.`inventory` WHERE charac_no = ?",
+			"SELECT money FROM `taiwan_cain`.`inventory` WHERE charac_no = ?",
+		}, characNo)
+		out.PayCoin = g.scalarInt64Any([]string{
+			"SELECT pay_coin FROM `taiwan_cain_2nd`.`inventory` WHERE charac_no = ?",
+			"SELECT pay_coin FROM `taiwan_cain`.`inventory` WHERE charac_no = ?",
+		}, characNo)
 		out.QP = g.scalarInt64("SELECT qp FROM `taiwan_cain`.`charac_quest_shop` WHERE charac_no = ?", characNo)
-		_ = g.db.QueryRow("SELECT remain_sp, remain_sp_2nd, remain_sfp_1st, remain_sfp_2nd FROM `taiwan_cain_2nd`.`skill` WHERE charac_no = ?", characNo).
-			Scan(&out.SP, &out.SP2, &out.TP, &out.TP2)
+		_ = g.querySkillPoints(characNo, &out.SP, &out.SP2, &out.TP, &out.TP2)
 		_ = g.db.QueryRow("SELECT pvp_grade, win, pvp_point, win_point FROM `taiwan_cain`.`pvp_result` WHERE charac_no = ?", characNo).
 			Scan(&out.PVPGrade, &out.PVPWin, &out.PVPPoint, &out.PVPWinPoint)
 	}
@@ -923,6 +928,38 @@ func (g *GameDB) scalarInt64(q string, args ...interface{}) int64 {
 		return v.Int64
 	}
 	return 0
+}
+
+// scalarInt64Any returns the first readable integer from fallback queries.
+func (g *GameDB) scalarInt64Any(queries []string, args ...interface{}) int64 {
+	for _, q := range queries {
+		var v sql.NullInt64
+		err := g.db.QueryRow(q, args...).Scan(&v)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err == nil && v.Valid {
+			return v.Int64
+		}
+	}
+	return 0
+}
+
+func (g *GameDB) querySkillPoints(characNo int, sp, sp2, tp, tp2 *int64) error {
+	queries := []string{
+		"SELECT remain_sp, remain_sp_2nd, remain_sfp_1st, remain_sfp_2nd FROM `taiwan_cain_2nd`.`skill` WHERE charac_no = ?",
+		"SELECT remain_sp, remain_sp_2nd, remain_sfp_1st, remain_sfp_2nd FROM `taiwan_cain`.`skill` WHERE charac_no = ?",
+	}
+	for _, q := range queries {
+		err := g.db.QueryRow(q, characNo).Scan(sp, sp2, tp, tp2)
+		if err == nil {
+			return nil
+		}
+		if err == sql.ErrNoRows {
+			continue
+		}
+	}
+	return sql.ErrNoRows
 }
 
 // ApplyResourcePatch 执行一次资源调整。
@@ -956,9 +993,9 @@ func (g *GameDB) ApplyResourcePatch(uid int64, characNo int, patch ResourcePatch
 		}
 		return g.setCreateLimit(uid, value)
 	case "charac_money":
-		return g.updateNumeric("taiwan_cain_2nd", "inventory", "money", "charac_no", int64(characNo), value, mode)
+		return g.updateInventoryNumeric(characNo, "money", value, mode)
 	case "pay_coin":
-		return g.updateNumeric("taiwan_cain_2nd", "inventory", "pay_coin", "charac_no", int64(characNo), value, mode)
+		return g.updateInventoryNumeric(characNo, "pay_coin", value, mode)
 	case "qp":
 		return g.updateNumeric("taiwan_cain", "charac_quest_shop", "qp", "charac_no", int64(characNo), value, mode)
 	case "sp":
@@ -1036,24 +1073,47 @@ func (g *GameDB) updateNumeric(dbName, table, column, key string, keyValue int64
 	return nil
 }
 
+func (g *GameDB) updateInventoryNumeric(characNo int, column string, value int64, mode string) error {
+	if characNo <= 0 {
+		return fmt.Errorf("character id is required")
+	}
+	if column != "money" && column != "pay_coin" {
+		return fmt.Errorf("invalid inventory column: %s", column)
+	}
+	var lastErr error
+	for _, dbName := range []string{"taiwan_cain_2nd", "taiwan_cain"} {
+		err := g.updateNumeric(dbName, "inventory", column, "charac_no", int64(characNo), value, mode)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("update inventory failed")
+}
+
 func (g *GameDB) updatePairedSkill(characNo int, col1, col2 string, value int64, mode string) error {
 	if characNo <= 0 {
-		return fmt.Errorf("角色 ID 无效")
+		return fmt.Errorf("character id is required")
 	}
 	setClause := fmt.Sprintf("%s = ?, %s = ?", col1, col2)
 	args := []interface{}{value, value, characNo}
 	if mode == "add" {
 		setClause = fmt.Sprintf("%s = %s + ?, %s = %s + ?", col1, col1, col2, col2)
 	}
-	q := fmt.Sprintf("UPDATE `taiwan_cain_2nd`.`skill` SET %s WHERE charac_no = ?", setClause)
-	res, err := g.db.Exec(q, args...)
-	if err != nil {
-		return fmt.Errorf("更新技能点失败: %w", err)
+	for _, dbName := range []string{"taiwan_cain_2nd", "taiwan_cain"} {
+		q := fmt.Sprintf("UPDATE `%s`.`skill` SET %s WHERE charac_no = ?", dbName, setClause)
+		res, err := g.db.Exec(q, args...)
+		if err != nil {
+			continue
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			return nil
+		}
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("更新技能点失败: 未找到角色技能记录")
-	}
-	return nil
+	return fmt.Errorf("update skill points failed: character skill row not found")
 }
 
 // SetPVP 修改 PVP 数据。
