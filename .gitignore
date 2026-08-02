@@ -3,3 +3,5 @@ Script.pvf
 ImagePacks2/
 extracted/Script.pvf
 dnfparser_verify_output/
+dist
+build

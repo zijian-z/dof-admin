@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -266,13 +268,40 @@ func main() {
 	mux.HandleFunc("/api/items/", s.handleItemDetail)
 	mux.HandleFunc("/", s.handleStatic)
 
+	handler := http.Handler(logRequest(mux))
+	authUser := strings.TrimSpace(os.Getenv("DNF_ADMIN_USER"))
+	authPassword := os.Getenv("DNF_ADMIN_PASSWORD")
+	if authUser != "" && authPassword != "" {
+		handler = logRequest(basicAuth(mux, authUser, authPassword))
+	} else {
+		log.Printf("WARNING: basic auth is disabled; set DNF_ADMIN_USER and DNF_ADMIN_PASSWORD to enable it")
+	}
+
 	addr := envDefault("DNF_ADMIN_ADDR", ":8080")
 	log.Printf("DNF admin UI listening on %s", addr)
 	log.Printf("build version=%s commit=%s buildTime=%s", version, commit, buildTime)
 	log.Printf("database configured=%t pvf=%q pvfCharset=%q npkRoot=%q", s.gameConfigured, s.pvfPath, s.pvfCharset, s.npkRoot)
-	if err := http.ListenAndServe(addr, logRequest(mux)); err != nil {
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func basicAuth(next http.Handler, user, password string) http.Handler {
+	userHash := sha256.Sum256([]byte(user))
+	passwordHash := sha256.Sum256([]byte(password))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		uHash := sha256.Sum256([]byte(u))
+		pHash := sha256.Sum256([]byte(p))
+		userMatch := subtle.ConstantTimeCompare(userHash[:], uHash[:]) == 1
+		passwordMatch := subtle.ConstantTimeCompare(passwordHash[:], pHash[:]) == 1
+		if !ok || !userMatch || !passwordMatch {
+			w.Header().Set("WWW-Authenticate", `Basic realm="dof-admin", charset="UTF-8"`)
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) openGameDB() {
